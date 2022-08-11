@@ -1,0 +1,22 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/PartyTyme87/CVVS/builds/ixiporn.cs3",
+        "status": 1,
+        "version": 16,
+        "name": "ixiporn",
+        "internalName": "ixiporn",
+        "authors": [
+            "PartyTyme87"
+        ],
+        "description": "IXI Porn",
+        "fileSize": 78364,
+        "repositoryUrl": "https://github.com/PartyTyme87/CVVS",
+        "language": "en",
+        "tvTypes": [
+            "NSFW"
+        ],
+        "iconUrl": "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ixiporn.org&size=16",
+        "apiVersion": 1,
+        "fileHash": "sha256-116e512ea382d4371c53fc430b991ae5ce1ccfd1592ca96f92f26aefe4919946"
+    }
+]
