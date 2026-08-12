@@ -24,7 +24,7 @@ class ixiporn : MainAPI() {
             "${mainUrl}/search/primeplay/page/" to "Prime Play",
             "${mainUrl}/search/neonx/page/" to "Neonx",
             "${mainUrl}/search/Bang+Bros/page/" to "BangBros",
-            "${mainUrl}/search/brazzers/" to "Brazzers",
+            "${mainUrl}/?s=Brazzers" to "Brazzers",
             "${mainUrl}/search/voovi/page/" to "Voovi Web Series",
     )
 
