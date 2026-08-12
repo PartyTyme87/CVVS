@@ -31,8 +31,8 @@ class ixiporn : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
         
-        // Broadened selector to catch the video blocks even if class names changed
-        val home = document.select(".video-block, article, .post, .item").mapNotNull { it.toSearchResult() }
+        // We now target ONLY the video block, ignoring the grid layout numbers so it never breaks!
+        val home = document.select("div.video-block").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -45,17 +45,16 @@ class ixiporn : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        // Robust selectors to grab title, href, and image no matter how the HTML changed
-        val titleElement = this.selectFirst("a[title], a.infos, .title a, a h3") ?: this.selectFirst("a")
-        val title = fixTitle(titleElement?.attr("title") ?: titleElement?.text() ?: "").trim()
+        val infos = this.selectFirst("a.infos")
         
-        val href = fixUrlNull(titleElement?.attr("href") ?: this.selectFirst("a")?.attr("href")) ?: return null
-        
-        val imgElement = this.selectFirst("img")
-        val posterUrl = fixUrlNull(imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: imgElement?.attr("data-lazy-src"))
-
-        // Saftey check to ensure it doesn't create blank clickable buttons
+        // Extracting exact tags from your HTML snippet
+        val title = infos?.attr("title")?.trim() ?: this.selectFirst("span.title")?.text()?.trim() ?: ""
         if (title.isEmpty()) return null
+        
+        val href = infos?.attr("href") ?: this.selectFirst("a.thumb")?.attr("href") ?: return null
+        
+        val img = this.selectFirst("img.video-img")
+        val posterUrl = fixUrlNull(img?.attr("data-src") ?: img?.attr("src"))
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
@@ -67,16 +66,13 @@ class ixiporn : MainAPI() {
 
         for (i in 1..10) {
             val document = app.get("${mainUrl}/page/$i?s=$query").document
-
-            // Updated search selector to match the new, broader homepage selector
-            val results = document.select(".video-block, article, .post, .item").mapNotNull { it.toSearchResult() }
+            val results = document.select("div.video-block").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) {
                 searchResponse.addAll(results)
             } else {
                 break
             }
-
             if (results.isEmpty()) break
         }
 
@@ -90,7 +86,6 @@ class ixiporn : MainAPI() {
         val poster      = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
@@ -100,25 +95,20 @@ class ixiporn : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
 
-        // Attempt 1: Your original meta tag
         var videoUrl = document.selectFirst("meta[itemprop=contentURL]")?.attr("content")
         
-        // Attempt 2: Standard HTML5 video player source
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = document.selectFirst("video source")?.attr("src")
         }
         
-        // Attempt 3: Look for an embedded iframe player 
         if (videoUrl.isNullOrEmpty()) {
             val iframeUrl = document.selectFirst("iframe")?.attr("src")
             if (!iframeUrl.isNullOrEmpty()) {
-                // If it's an iframe, tell Cloudstream to extract the video from the embed URL
                 loadExtractor(fixUrl(iframeUrl), data, subtitleCallback, callback)
                 return true
             }
         }
 
-        // If we found a direct video URL, push it to the player
         if (!videoUrl.isNullOrEmpty()) {
             callback.invoke(
                 ExtractorLink(
