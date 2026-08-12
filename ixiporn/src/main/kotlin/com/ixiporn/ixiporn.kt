@@ -108,17 +108,16 @@ class ixiporn : MainAPI() {
         }
 
         if (!videoUrl.isNullOrEmpty()) {
-            // Using the updated newExtractorLink function the build system requires
+            // We now pass all variables directly as parameters to satisfy the new syntax rules
             callback.invoke(
                 newExtractorLink(
                     source = this.name,
                     name = this.name,
-                    url = fixUrl(videoUrl)
-                ) {
-                    this.referer = data
-                    this.quality = Qualities.Unknown.value
-                    this.isM3u8 = videoUrl.contains(".m3u8")
-                }
+                    url = fixUrl(videoUrl),
+                    referer = data,
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = videoUrl.contains(".m3u8")
+                )
             )
         }
 
