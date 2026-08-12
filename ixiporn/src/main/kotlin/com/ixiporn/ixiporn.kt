@@ -31,7 +31,6 @@ class ixiporn : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
         
-        // We now target ONLY the video block, ignoring the grid layout numbers so it never breaks!
         val home = document.select("div.video-block").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -47,7 +46,6 @@ class ixiporn : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val infos = this.selectFirst("a.infos")
         
-        // Extracting exact tags from your HTML snippet
         val title = infos?.attr("title")?.trim() ?: this.selectFirst("span.title")?.text()?.trim() ?: ""
         if (title.isEmpty()) return null
         
@@ -110,15 +108,17 @@ class ixiporn : MainAPI() {
         }
 
         if (!videoUrl.isNullOrEmpty()) {
+            // Using the updated newExtractorLink function the build system requires
             callback.invoke(
-                ExtractorLink(
+                newExtractorLink(
                     source = this.name,
                     name = this.name,
-                    url = fixUrl(videoUrl),
-                    referer = data,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = videoUrl.contains(".m3u8")
-                )
+                    url = fixUrl(videoUrl)
+                ) {
+                    this.referer = data
+                    this.quality = Qualities.Unknown.value
+                    this.isM3u8 = videoUrl.contains(".m3u8")
+                }
             )
         }
 
