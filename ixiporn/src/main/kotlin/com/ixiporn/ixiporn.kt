@@ -108,16 +108,17 @@ class ixiporn : MainAPI() {
         }
 
         if (!videoUrl.isNullOrEmpty()) {
-            // We now pass all variables directly as parameters to satisfy the new syntax rules
             callback.invoke(
+                // Cloudstream's required format for setting up the video player
                 newExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = fixUrl(videoUrl),
-                    referer = data,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = videoUrl.contains(".m3u8")
-                )
+                    type = INFER_TYPE
+                ) {
+                    this.referer = data
+                    this.quality = Qualities.Unknown.value
+                }
             )
         }
 
