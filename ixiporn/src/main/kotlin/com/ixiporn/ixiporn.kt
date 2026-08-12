@@ -15,7 +15,6 @@ class ixiporn : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // ADDED: Most Viewed and Top Rated shelves right at the top!
     override val mainPage = mainPageOf(
             "${mainUrl}/?filter=latest/page/" to "Latest Release",
             "${mainUrl}/?filter=most-viewed/page/" to "Most Viewed",
@@ -101,6 +100,15 @@ class ixiporn : MainAPI() {
         
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = Regex("""(https?://[^"'\s]+?\.mp4)""").find(html)?.groupValues?.get(1)
+        }
+
+        // ADDED BACK: This is the Iframe backup that catches older/embedded videos!
+        if (videoUrl.isNullOrEmpty()) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (!iframeUrl.isNullOrEmpty()) {
+                loadExtractor(fixUrl(iframeUrl), data, subtitleCallback, callback)
+                return true
+            }
         }
 
         if (!videoUrl.isNullOrEmpty()) {
