@@ -1,0 +1,8 @@
+{
+    "name": "CVVS Repo",
+    "description": "My custom CVVS extensions",
+    "manifestVersion": 1,
+    "pluginLists": [
+        "https://raw.githubusercontent.com/PartyTyme87/CVVS/builds/plugins.json"
+    ]
+}
