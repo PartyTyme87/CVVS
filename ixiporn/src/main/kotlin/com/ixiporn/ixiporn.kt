@@ -30,9 +30,7 @@ class ixiporn : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
-        
         val home = document.select("div.video-block").mapNotNull { it.toSearchResult() }
-
         return newHomePageResponse(
             list    = HomePageList(
                 name               = request.name,
@@ -50,7 +48,6 @@ class ixiporn : MainAPI() {
         if (title.isEmpty()) return null
         
         val href = infos?.attr("href") ?: this.selectFirst("a.thumb")?.attr("href") ?: return null
-        
         val img = this.selectFirst("img.video-img")
         val posterUrl = fixUrlNull(img?.attr("data-src") ?: img?.attr("src"))
 
@@ -61,28 +58,26 @@ class ixiporn : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-
         for (i in 1..10) {
             val document = app.get("${mainUrl}/page/$i?s=$query").document
             val results = document.select("div.video-block").mapNotNull { it.toSearchResult() }
 
-            if (!searchResponse.containsAll(results)) {
-                searchResponse.addAll(results)
-            } else {
-                break
-            }
+            if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
             if (results.isEmpty()) break
         }
-
         return searchResponse
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        val title       = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-        val poster      = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
-        val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
+        // Added single quotes to the CSS selectors to prevent JSoup from returning null
+        val title = document.selectFirst("meta[property='og:title']")?.attr("content")?.trim() 
+            ?: document.selectFirst("title")?.text()?.trim() 
+            ?: "Video"
+            
+        val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
+        val description = document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -92,31 +87,32 @@ class ixiporn : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
+        val html = document.html() // Grab raw HTML code for brute-force searching
 
-        var videoUrl = document.selectFirst("meta[itemprop=contentURL]")?.attr("content")
+        // Attempt 1: JSoup with fixed single quotes
+        var videoUrl = document.selectFirst("meta[itemprop='contentURL']")?.attr("content")
         
+        // Attempt 2: Direct video tag
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = document.selectFirst("video source")?.attr("src")
         }
         
+        // Attempt 3: Brute-force Regex search to catch ANY unhidden .mp4 link on the page
         if (videoUrl.isNullOrEmpty()) {
-            val iframeUrl = document.selectFirst("iframe")?.attr("src")
-            if (!iframeUrl.isNullOrEmpty()) {
-                loadExtractor(fixUrl(iframeUrl), data, subtitleCallback, callback)
-                return true
-            }
+            videoUrl = Regex("""(https?://[^"'\s]+?\.mp4)""").find(html)?.groupValues?.get(1)
         }
 
         if (!videoUrl.isNullOrEmpty()) {
             callback.invoke(
-                // Cloudstream's required format for setting up the video player
                 newExtractorLink(
                     source = this.name,
                     name = this.name,
                     url = fixUrl(videoUrl),
                     type = INFER_TYPE
                 ) {
-                    this.referer = data
+                    // Spoofing security headers to bypass the CDN firewall
+                    this.referer = mainUrl
+                    this.headers = mapOf("Referer" to data, "Origin" to mainUrl)
                     this.quality = Qualities.Unknown.value
                 }
             )
