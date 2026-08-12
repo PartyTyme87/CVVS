@@ -9,7 +9,10 @@ class ixiporn : MainAPI() {
     override var name                 = "ixiporn"
     override val hasMainPage          = true
     override var lang                 = "hi"
-    override val hasQuickSearch       = false
+    
+    // CHANGED TO TRUE: This enables the live search as you type!
+    override val hasQuickSearch       = true
+    
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
@@ -58,8 +61,12 @@ class ixiporn : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
+        
+        // ADDED: This line safely replaces spaces with a '+' so multi-word searches work perfectly!
+        val safeQuery = query.replace(" ", "+")
+
         for (i in 1..10) {
-            val document = app.get("${mainUrl}/page/$i?s=$query").document
+            val document = app.get("${mainUrl}/page/$i?s=$safeQuery").document
             val results = document.select("div.video-block").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
@@ -71,7 +78,6 @@ class ixiporn : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Added single quotes to the CSS selectors to prevent JSoup from returning null
         val title = document.selectFirst("meta[property='og:title']")?.attr("content")?.trim() 
             ?: document.selectFirst("title")?.text()?.trim() 
             ?: "Video"
@@ -87,17 +93,14 @@ class ixiporn : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
-        val html = document.html() // Grab raw HTML code for brute-force searching
+        val html = document.html() 
 
-        // Attempt 1: JSoup with fixed single quotes
         var videoUrl = document.selectFirst("meta[itemprop='contentURL']")?.attr("content")
         
-        // Attempt 2: Direct video tag
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = document.selectFirst("video source")?.attr("src")
         }
         
-        // Attempt 3: Brute-force Regex search to catch ANY unhidden .mp4 link on the page
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = Regex("""(https?://[^"'\s]+?\.mp4)""").find(html)?.groupValues?.get(1)
         }
@@ -110,7 +113,6 @@ class ixiporn : MainAPI() {
                     url = fixUrl(videoUrl),
                     type = INFER_TYPE
                 ) {
-                    // Spoofing security headers to bypass the CDN firewall
                     this.referer = mainUrl
                     this.headers = mapOf("Referer" to data, "Origin" to mainUrl)
                     this.quality = Qualities.Unknown.value
