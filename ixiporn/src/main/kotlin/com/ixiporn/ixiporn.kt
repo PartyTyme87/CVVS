@@ -9,17 +9,17 @@ class ixiporn : MainAPI() {
     override var name                 = "ixiporn"
     override val hasMainPage          = true
     override var lang                 = "hi"
-    
-    // CHANGED TO TRUE: This enables the live search as you type!
     override val hasQuickSearch       = true
-    
     override val hasDownloadSupport   = true
     override val hasChromecastSupport = true
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
+    // ADDED: Most Viewed and Top Rated shelves right at the top!
     override val mainPage = mainPageOf(
             "${mainUrl}/?filter=latest/page/" to "Latest Release",
+            "${mainUrl}/?filter=most-viewed/page/" to "Most Viewed",
+            "${mainUrl}/?filter=popular/page/" to "Top Rated",
             "${mainUrl}/tag/ullu-web-series/page/" to "Ullu Web Series",
             "${mainUrl}/search/Hunters/page/" to "Hunter Web Series",
             "${mainUrl}/search/fugi/page/" to "Fugi Web Series",
@@ -61,8 +61,6 @@ class ixiporn : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-        
-        // ADDED: This line safely replaces spaces with a '+' so multi-word searches work perfectly!
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..10) {
