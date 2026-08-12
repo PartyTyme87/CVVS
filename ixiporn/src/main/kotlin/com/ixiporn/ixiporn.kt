@@ -24,13 +24,15 @@ class ixiporn : MainAPI() {
             "${mainUrl}/search/primeplay/page/" to "Prime Play",
             "${mainUrl}/search/neonx/page/" to "Neonx",
             "${mainUrl}/search/Bang+Bros/page/" to "BangBros",
-            "${mainUrl}/?s=Brazzers" to "Brazzers",
+            "${mainUrl}/search/brazzers/page/" to "Brazzers",
             "${mainUrl}/search/voovi/page/" to "Voovi Web Series",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
-        val home     = document.select("div.col-12.col-md-4.col-lg-3.col-xl-3 > div.video-block").mapNotNull { it.toSearchResult() }
+        
+        // Broadened selector to catch the video blocks even if class names changed
+        val home = document.select(".video-block, article, .post, .item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -42,10 +44,18 @@ class ixiporn : MainAPI() {
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val title     = fixTitle(this.select("a.infos").attr("title")).trim().toString()
-        val href      = fixUrl(this.select("a.infos").attr("href"))
-        val posterUrl = fixUrlNull(this.select("a.thumb > img").attr("data-src"))
+    private fun Element.toSearchResult(): SearchResponse? {
+        // Robust selectors to grab title, href, and image no matter how the HTML changed
+        val titleElement = this.selectFirst("a[title], a.infos, .title a, a h3") ?: this.selectFirst("a")
+        val title = fixTitle(titleElement?.attr("title") ?: titleElement?.text() ?: "").trim()
+        
+        val href = fixUrlNull(titleElement?.attr("href") ?: this.selectFirst("a")?.attr("href")) ?: return null
+        
+        val imgElement = this.selectFirst("img")
+        val posterUrl = fixUrlNull(imgElement?.attr("data-src") ?: imgElement?.attr("src") ?: imgElement?.attr("data-lazy-src"))
+
+        // Saftey check to ensure it doesn't create blank clickable buttons
+        if (title.isEmpty()) return null
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
@@ -58,7 +68,8 @@ class ixiporn : MainAPI() {
         for (i in 1..10) {
             val document = app.get("${mainUrl}/page/$i?s=$query").document
 
-            val results = document.select("div.col-12.col-md-4.col-lg-3.col-xl-3 > div.video-block").mapNotNull { it.toSearchResult() }
+            // Updated search selector to match the new, broader homepage selector
+            val results = document.select(".video-block, article, .post, .item").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) {
                 searchResponse.addAll(results)
@@ -78,7 +89,7 @@ class ixiporn : MainAPI() {
         val title       = document.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
         val poster      = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
-    
+
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -89,16 +100,35 @@ class ixiporn : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
 
-        document.select("div.video-player").map { res ->
+        // Attempt 1: Your original meta tag
+        var videoUrl = document.selectFirst("meta[itemprop=contentURL]")?.attr("content")
+        
+        // Attempt 2: Standard HTML5 video player source
+        if (videoUrl.isNullOrEmpty()) {
+            videoUrl = document.selectFirst("video source")?.attr("src")
+        }
+        
+        // Attempt 3: Look for an embedded iframe player 
+        if (videoUrl.isNullOrEmpty()) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (!iframeUrl.isNullOrEmpty()) {
+                // If it's an iframe, tell Cloudstream to extract the video from the embed URL
+                loadExtractor(fixUrl(iframeUrl), data, subtitleCallback, callback)
+                return true
+            }
+        }
+
+        // If we found a direct video URL, push it to the player
+        if (!videoUrl.isNullOrEmpty()) {
             callback.invoke(
-                newExtractorLink(
+                ExtractorLink(
                     source = this.name,
                     name = this.name,
-                    url = fixUrl(res.selectFirst("meta[itemprop=contentURL]")?.attr("content")?.trim().toString())
-                ) {
-                    this.referer = data
-                    this.quality = Qualities.Unknown.value
-                }
+                    url = fixUrl(videoUrl),
+                    referer = data,
+                    quality = Qualities.Unknown.value,
+                    isM3u8 = videoUrl.contains(".m3u8")
+                )
             )
         }
 
