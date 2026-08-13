@@ -16,15 +16,15 @@ class Brazzpw : MainAPI() {
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
     override val mainPage = mainPageOf(
-        "${mainUrl}/" to "Home"
-        // We will add the real shelves here once we know the site's layout!
+        "${mainUrl}/page/" to "Latest Updates"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(request.data).document
+        // Handling WordPress pagination (page 1 is just the base URL, others are /page/2/)
+        val url = if (page == 1) request.data.replace("page/", "") else request.data + "$page/"
+        val document = app.get(url).document
         
-        // PLACEHOLDER: We need the website's HTML to fill this in
-        val home = document.select("REPLACE_ME").mapNotNull { it.toSearchResult() }
+        val home = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -32,15 +32,24 @@ class Brazzpw : MainAPI() {
                 list               = home,
                 isHorizontalImages = true
             ),
-            hasNext = false
+            hasNext = true
         )
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        // PLACEHOLDER: We will update this once we see the website's HTML!
-        val title = this.selectFirst("a")?.text()?.trim() ?: return null
-        val href = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+        val linkElement = this.selectFirst("a") ?: return null
+        
+        // Grabbing the clean title straight from the link attribute
+        val title = linkElement.attr("title").trim()
+        if (title.isEmpty()) return null
+        
+        val href = fixUrlNull(linkElement.attr("href")) ?: return null
+        
+        val img = this.selectFirst("img")
+        val posterUrl = fixUrlNull(
+            img?.attr("data-src")?.takeIf { it.isNotBlank() } 
+            ?: img?.attr("src")?.takeIf { it.isNotBlank() }
+        )
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
@@ -48,8 +57,19 @@ class Brazzpw : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // We will build this out once the homepage works!
-        return listOf()
+        val searchResponse = mutableListOf<SearchResponse>()
+        val safeQuery = query.replace(" ", "+")
+
+        for (i in 1..10) {
+            // Standard WordPress search URL format
+            val url = if (i == 1) "${mainUrl}/?s=$safeQuery" else "${mainUrl}/page/$i/?s=$safeQuery"
+            val document = app.get(url).document
+            val results = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
+
+            if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
+            if (results.isEmpty()) break
+        }
+        return searchResponse
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -58,7 +78,7 @@ class Brazzpw : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // We will build this out last!
+        // We will build this out next!
         return true
     }
 }
