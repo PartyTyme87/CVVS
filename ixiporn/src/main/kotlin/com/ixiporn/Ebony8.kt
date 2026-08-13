@@ -15,7 +15,6 @@ class Ebony8 : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // Added the standard shelves for this site
     override val mainPage = mainPageOf(
         "${mainUrl}/latest-updates/" to "Latest Updates",
         "${mainUrl}/most-popular/" to "Most Popular",
@@ -23,10 +22,7 @@ class Ebony8 : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Appending the page number for pagination (e.g., /latest-updates/2/)
         val document = app.get(request.data + "$page/").document
-        
-        // Grabbing the exact 'div.item' wrapper from your HTML snippet
         val home = document.select("div.item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -42,7 +38,6 @@ class Ebony8 : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val linkElement = this.selectFirst("a") ?: return null
         
-        // Looking for the strong.title tag you found
         val title = this.selectFirst("strong.title")?.text()?.trim() 
             ?: linkElement.attr("title").trim()
             
@@ -50,9 +45,12 @@ class Ebony8 : MainAPI() {
         
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Targeting the 'data-original' attribute for the unblurred image
-        val img = this.selectFirst("img.thumb")
-        val posterUrl = fixUrlNull(img?.attr("data-original") ?: img?.attr("src"))
+        val img = this.selectFirst("img")
+        // Fixed: We now force it to check the next attribute if the first one is blank!
+        val posterUrl = fixUrlNull(
+            img?.attr("data-original")?.takeIf { it.isNotBlank() } 
+            ?: img?.attr("src")?.takeIf { it.isNotBlank() }
+        )
 
         return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
@@ -74,12 +72,12 @@ class Ebony8 : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // We will build this out once the homepage works!
+        // We will build this out once I see the video player HTML!
         return newMovieLoadResponse("Placeholder", url, TvType.NSFW, url)
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // We will build this out once the homepage works!
+        // We will build this out once I see the video player HTML!
         return true
     }
 }
