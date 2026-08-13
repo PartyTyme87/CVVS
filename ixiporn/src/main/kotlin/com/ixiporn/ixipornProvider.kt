@@ -8,5 +8,6 @@ import android.content.Context
 class ixipornProvider: Plugin() {
     override fun load(context: Context) {
         registerMainAPI(ixiporn())
+        registerMainAPI(Ebony8())
     }
 }
