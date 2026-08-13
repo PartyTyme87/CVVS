@@ -46,7 +46,6 @@ class Ebony8 : MainAPI() {
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
         val img = this.selectFirst("img")
-        // Fixed: We now force it to check the next attribute if the first one is blank!
         val posterUrl = fixUrlNull(
             img?.attr("data-original")?.takeIf { it.isNotBlank() } 
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
@@ -72,12 +71,60 @@ class Ebony8 : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // We will build this out once I see the video player HTML!
-        return newMovieLoadResponse("Placeholder", url, TvType.NSFW, url)
+        val document = app.get(url).document
+
+        val title = document.selectFirst("meta[property='og:title']")?.attr("content")?.trim() 
+            ?: document.selectFirst("title")?.text()?.trim() 
+            ?: "Video"
+            
+        val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
+        val description = document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
+
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+            this.posterUrl = poster
+            this.plot      = description
+        }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // We will build this out once I see the video player HTML!
+        val document = app.get(data).document
+        val html = document.html() 
+
+        // Attempt 1: Target the specific player class you found
+        var videoUrl = document.selectFirst("video.fp-engine, video")?.attr("src")
+        
+        // Attempt 2: Regex search designed to grab the .mp4 AND the long security token
+        if (videoUrl.isNullOrEmpty()) {
+            videoUrl = Regex("""(https?://[^"'\s]+?\.mp4[^"'\s]*)""").find(html)?.groupValues?.get(1)
+        }
+
+        // Attempt 3: Iframe backup for older videos
+        if (videoUrl.isNullOrEmpty()) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (!iframeUrl.isNullOrEmpty()) {
+                loadExtractor(fixUrl(iframeUrl), data, subtitleCallback, callback)
+                return true
+            }
+        }
+
+        if (!videoUrl.isNullOrEmpty()) {
+            // Clean up any escaped ampersands in the security token
+            val cleanUrl = fixUrl(videoUrl).replace("&amp;", "&")
+            
+            callback.invoke(
+                newExtractorLink(
+                    source = this.name,
+                    name = this.name,
+                    url = cleanUrl,
+                    type = INFER_TYPE
+                ) {
+                    this.referer = mainUrl
+                    this.headers = mapOf("Referer" to data, "Origin" to mainUrl)
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
+
         return true
     }
 }
