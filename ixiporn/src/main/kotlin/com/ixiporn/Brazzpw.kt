@@ -89,38 +89,55 @@ class Brazzpw : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
         
-        // Step 1: Grab the internal player URL from the meta tag you found
         var iframeUrl = document.selectFirst("meta[itemprop='embedURL']")?.attr("content") 
             ?: document.selectFirst("iframe")?.attr("src")
 
         if (!iframeUrl.isNullOrEmpty()) {
-            // Clean up the URL (HTML sometimes turns '&' into '&amp;')
             iframeUrl = fixUrl(iframeUrl).replace("&amp;", "&")
             
-            // Step 2: Secretly visit the player URL and grab its HTML code
-            val playerHtml = app.get(iframeUrl, headers = mapOf("Referer" to data)).text
+            // TRICK 1: Spoof an old iPhone to bypass the complex JavaScript player!
+            val mobileHeaders = mapOf(
+                "Referer" to data,
+                "User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
+            )
             
-            // Step 3: Use Regex to hunt down the raw .mp4 or .m3u8 video file inside the player!
-            var videoUrl = Regex("""(https?://[^"'\s]+?\.(?:mp4|m3u8)[^"'\s]*)""").find(playerHtml)?.groupValues?.get(1)
+            val playerHtml = app.get(iframeUrl, headers = mobileHeaders).text
             
+            // Search 1: Standard Regex for mp4/m3u8
+            var videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:mp4|m3u8)[^"'\s\\]*)""").find(playerHtml)?.groupValues?.get(1)
+            
+            // Search 2: Look for backend 'get_file' links
+            if (videoUrl.isNullOrEmpty()) {
+                videoUrl = Regex("""(https?://[^"'\s\\]+?/get_file/[^"'\s\\]+)""").find(playerHtml)?.groupValues?.get(1)
+            }
+
+            // Search 3: Detect and decode URL-encoded links (e.g., https%3A%2F%2F)
+            if (videoUrl.isNullOrEmpty()) {
+                val encodedMatch = Regex("""(https?%3A%2F%2F[^"'\s\\]+?(?:\.mp4|\.m3u8|%2E)[^"'\s\\]*)""").find(playerHtml)?.groupValues?.get(1)
+                if (!encodedMatch.isNullOrEmpty()) {
+                    try { 
+                        videoUrl = java.net.URLDecoder.decode(encodedMatch, "UTF-8") 
+                    } catch (e: Exception) {}
+                }
+            }
+
             if (!videoUrl.isNullOrEmpty()) {
-                videoUrl = videoUrl.replace("&amp;", "&") // Clean it one last time
+                val cleanUrl = videoUrl.replace("&amp;", "&").replace("\\", "")
                 
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = this.name,
-                        url = videoUrl,
+                        url = cleanUrl,
                         type = INFER_TYPE
                     ) {
-                        // Spoof headers to make the server think we are watching directly on their site
                         this.referer = iframeUrl
                         this.headers = mapOf("Referer" to iframeUrl)
                         this.quality = Qualities.Unknown.value
                     }
                 )
             } else {
-                // If the regex fails, pass it to Cloudstream's universal extractor just in case
+                // Final Backup: Send it to Cloudstream's universal extractor engine
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
