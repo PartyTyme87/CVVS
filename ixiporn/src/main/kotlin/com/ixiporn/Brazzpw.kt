@@ -72,7 +72,6 @@ class Brazzpw : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
 
-        // Added the exact meta tags you found in the HTML snippet!
         val title = document.selectFirst("meta[property='og:title']")?.attr("content")
             ?.replace("BrazzPW.XYZ -", "")?.trim() 
             ?: document.selectFirst("title")?.text()?.trim() 
@@ -88,7 +87,44 @@ class Brazzpw : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // I am waiting for the video player HTML snippet to finish this!
+        val document = app.get(data).document
+        
+        // Step 1: Grab the internal player URL from the meta tag you found
+        var iframeUrl = document.selectFirst("meta[itemprop='embedURL']")?.attr("content") 
+            ?: document.selectFirst("iframe")?.attr("src")
+
+        if (!iframeUrl.isNullOrEmpty()) {
+            // Clean up the URL (HTML sometimes turns '&' into '&amp;')
+            iframeUrl = fixUrl(iframeUrl).replace("&amp;", "&")
+            
+            // Step 2: Secretly visit the player URL and grab its HTML code
+            val playerHtml = app.get(iframeUrl, headers = mapOf("Referer" to data)).text
+            
+            // Step 3: Use Regex to hunt down the raw .mp4 or .m3u8 video file inside the player!
+            var videoUrl = Regex("""(https?://[^"'\s]+?\.(?:mp4|m3u8)[^"'\s]*)""").find(playerHtml)?.groupValues?.get(1)
+            
+            if (!videoUrl.isNullOrEmpty()) {
+                videoUrl = videoUrl.replace("&amp;", "&") // Clean it one last time
+                
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = videoUrl,
+                        type = INFER_TYPE
+                    ) {
+                        // Spoof headers to make the server think we are watching directly on their site
+                        this.referer = iframeUrl
+                        this.headers = mapOf("Referer" to iframeUrl)
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            } else {
+                // If the regex fails, pass it to Cloudstream's universal extractor just in case
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
+            }
+        }
+        
         return true
     }
 }
