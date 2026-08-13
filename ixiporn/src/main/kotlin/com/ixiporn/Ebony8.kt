@@ -15,15 +15,22 @@ class Ebony8 : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
+    // ADDED: A custom shelf for our 20+ Minute filter (pulling from latest updates)
     override val mainPage = mainPageOf(
         "${mainUrl}/latest-updates/" to "Latest Updates",
+        "${mainUrl}/latest-updates/" to "20+ Minutes",
         "${mainUrl}/most-popular/" to "Most Popular",
         "${mainUrl}/top-rated/" to "Top Rated"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + "$page/").document
-        val home = document.select("div.item").mapNotNull { it.toSearchResult() }
+        
+        // We check if the user is looking at our custom long video shelf
+        val isLongShelf = request.name == "20+ Minutes"
+        
+        // We pass that rule into our search result builder
+        val home = document.select("div.item").mapNotNull { it.toSearchResult(isLongShelf) }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -35,7 +42,24 @@ class Ebony8 : MainAPI() {
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
+    // ADDED: The requireLong rule
+    private fun Element.toSearchResult(requireLong: Boolean = false): SearchResponse? {
+        // --- DURATION FILTER ---
+        if (requireLong) {
+            val durationText = this.selectFirst("div.duration")?.text()?.trim() ?: "0:00"
+            val parts = durationText.split(":")
+            
+            // Convert mm:ss or hh:mm:ss into total minutes
+            val minutes = when (parts.size) {
+                2 -> parts[0].toIntOrNull() ?: 0 // format like 07:22
+                3 -> (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0) // format like 1:07:22
+                else -> 0
+            }
+            
+            // If it's under 20 minutes, return null (skip this video entirely!)
+            if (minutes < 20) return null 
+        }
+
         val linkElement = this.selectFirst("a") ?: return null
         
         val title = this.selectFirst("strong.title")?.text()?.trim() 
@@ -90,15 +114,12 @@ class Ebony8 : MainAPI() {
         val document = app.get(data).document
         val html = document.html() 
 
-        // Attempt 1: Target the specific player class you found
         var videoUrl = document.selectFirst("video.fp-engine, video")?.attr("src")
         
-        // Attempt 2: Regex search designed to grab the .mp4 AND the long security token
         if (videoUrl.isNullOrEmpty()) {
             videoUrl = Regex("""(https?://[^"'\s]+?\.mp4[^"'\s]*)""").find(html)?.groupValues?.get(1)
         }
 
-        // Attempt 3: Iframe backup for older videos
         if (videoUrl.isNullOrEmpty()) {
             val iframeUrl = document.selectFirst("iframe")?.attr("src")
             if (!iframeUrl.isNullOrEmpty()) {
@@ -108,7 +129,6 @@ class Ebony8 : MainAPI() {
         }
 
         if (!videoUrl.isNullOrEmpty()) {
-            // Clean up any escaped ampersands in the security token
             val cleanUrl = fixUrl(videoUrl).replace("&amp;", "&")
             
             callback.invoke(
