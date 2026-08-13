@@ -20,7 +20,6 @@ class Brazzpw : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Handling WordPress pagination (page 1 is just the base URL, others are /page/2/)
         val url = if (page == 1) request.data.replace("page/", "") else request.data + "$page/"
         val document = app.get(url).document
         
@@ -39,7 +38,6 @@ class Brazzpw : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val linkElement = this.selectFirst("a") ?: return null
         
-        // Grabbing the clean title straight from the link attribute
         val title = linkElement.attr("title").trim()
         if (title.isEmpty()) return null
         
@@ -61,7 +59,6 @@ class Brazzpw : MainAPI() {
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..10) {
-            // Standard WordPress search URL format
             val url = if (i == 1) "${mainUrl}/?s=$safeQuery" else "${mainUrl}/page/$i/?s=$safeQuery"
             val document = app.get(url).document
             val results = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
@@ -73,12 +70,25 @@ class Brazzpw : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        // We will build this out once the homepage works!
-        return newMovieLoadResponse("Placeholder", url, TvType.NSFW, url)
+        val document = app.get(url).document
+
+        // Added the exact meta tags you found in the HTML snippet!
+        val title = document.selectFirst("meta[property='og:title']")?.attr("content")
+            ?.replace("BrazzPW.XYZ -", "")?.trim() 
+            ?: document.selectFirst("title")?.text()?.trim() 
+            ?: "Video"
+            
+        val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
+        val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
+
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+            this.posterUrl = poster
+            this.plot      = description
+        }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // We will build this out next!
+        // I am waiting for the video player HTML snippet to finish this!
         return true
     }
 }
