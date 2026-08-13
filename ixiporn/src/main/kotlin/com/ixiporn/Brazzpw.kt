@@ -86,6 +86,21 @@ class Brazzpw : MainAPI() {
         }
     }
 
+    // THE DECRYPTOR: We translated their Javascript security into Kotlin!
+    private fun decodeKVS(encoded: String): String {
+        val builder = java.lang.StringBuilder()
+        for (i in encoded.indices) {
+            val c = encoded[i]
+            val n = c.code - 32
+            if (n in 0..94) {
+                builder.append((32 + (n + i) % 95).toChar())
+            } else {
+                builder.append(c)
+            }
+        }
+        return builder.toString()
+    }
+
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
         
@@ -95,30 +110,23 @@ class Brazzpw : MainAPI() {
         if (!iframeUrl.isNullOrEmpty()) {
             iframeUrl = fixUrl(iframeUrl).replace("&amp;", "&")
             
-            // TRICK 1: Spoof an old iPhone to bypass the complex JavaScript player!
-            val mobileHeaders = mapOf(
-                "Referer" to data,
-                "User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1"
-            )
+            val playerHtml = app.get(iframeUrl, headers = mapOf("Referer" to data)).text
+            var htmlToSearch = playerHtml
             
-            val playerHtml = app.get(iframeUrl, headers = mobileHeaders).text
+            // STEP 1: Look for the encrypted payload inside var d='...'
+            val encryptedMatch = Regex("""var\s+d\s*=\s*['"]([^'"]+)['"]\.split""").find(playerHtml)?.groupValues?.get(1)
             
-            // Search 1: Standard Regex for mp4/m3u8
-            var videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:mp4|m3u8)[^"'\s\\]*)""").find(playerHtml)?.groupValues?.get(1)
-            
-            // Search 2: Look for backend 'get_file' links
-            if (videoUrl.isNullOrEmpty()) {
-                videoUrl = Regex("""(https?://[^"'\s\\]+?/get_file/[^"'\s\\]+)""").find(playerHtml)?.groupValues?.get(1)
+            if (!encryptedMatch.isNullOrEmpty()) {
+                // STEP 2: CRACK THE ENCRYPTION!
+                val crackedJson = decodeKVS(encryptedMatch)
+                htmlToSearch += crackedJson // Add the decrypted links into our search area
             }
-
-            // Search 3: Detect and decode URL-encoded links (e.g., https%3A%2F%2F)
+            
+            // STEP 3: Now run our Regex search over the cracked data
+            var videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:mp4|m3u8)[^"'\s\\]*)""").find(htmlToSearch)?.groupValues?.get(1)
+            
             if (videoUrl.isNullOrEmpty()) {
-                val encodedMatch = Regex("""(https?%3A%2F%2F[^"'\s\\]+?(?:\.mp4|\.m3u8|%2E)[^"'\s\\]*)""").find(playerHtml)?.groupValues?.get(1)
-                if (!encodedMatch.isNullOrEmpty()) {
-                    try { 
-                        videoUrl = java.net.URLDecoder.decode(encodedMatch, "UTF-8") 
-                    } catch (e: Exception) {}
-                }
+                videoUrl = Regex("""(https?://[^"'\s\\]+?/get_file/[^"'\s\\]+)""").find(htmlToSearch)?.groupValues?.get(1)
             }
 
             if (!videoUrl.isNullOrEmpty()) {
@@ -137,7 +145,6 @@ class Brazzpw : MainAPI() {
                     }
                 )
             } else {
-                // Final Backup: Send it to Cloudstream's universal extractor engine
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
