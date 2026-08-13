@@ -86,51 +86,77 @@ class Brazzpw : MainAPI() {
         }
     }
 
+    // THE DECRYPTOR: Masterfully cracking KVS mathematical encryption
+    private fun decodeKVS(encoded: String): String {
+        val builder = java.lang.StringBuilder()
+        for (i in encoded.indices) {
+            val c = encoded[i]
+            val n = c.code - 32
+            if (n in 0..94) {
+                builder.append((32 + (n + i) % 95).toChar())
+            } else {
+                builder.append(c)
+            }
+        }
+        return builder.toString()
+    }
+
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // Step 1: Extract the Video ID straight out of the URL (e.g., 11512831)
-        val videoId = Regex("""/video/(\d+)""").find(data)?.groupValues?.get(1)
-        
         val document = app.get(data).document
+        
         var iframeUrl = document.selectFirst("meta[itemprop='embedURL']")?.attr("content") 
             ?: document.selectFirst("iframe")?.attr("src")
-
-        var videoUrl: String? = null
 
         if (!iframeUrl.isNullOrEmpty()) {
             iframeUrl = fixUrl(iframeUrl).replace("&amp;", "&")
             val playerHtml = app.get(iframeUrl, headers = mapOf("Referer" to data)).text
             
-            // Step 2: Use your discovery! Hunt the player code for the .m3u8 link
-            videoUrl = Regex("""(https?://[^"'\s\\]+?\.m3u8[^"'\s\\]*)""").find(playerHtml)?.groupValues?.get(1)
+            var htmlToSearch = playerHtml
             
-            // Step 3: If it's still hidden, we literally build the URL ourselves!
-            if (videoUrl.isNullOrEmpty() && videoId != null) {
-                videoUrl = "${mainUrl}/player/m3u8_$videoId.m3u8"
-            }
-        }
+            // STEP 1: A massive Regex upgrade to swallow the entire encrypted payload!
+            val encryptedMatch = Regex("""var\s+d\s*=\s*'(.*?)'\.split\(""\)""").find(playerHtml)?.groupValues?.get(1)
+            
+            if (!encryptedMatch.isNullOrEmpty()) {
+                // STEP 2: We must clean up JavaScript escape characters so our math equation stays synced!
+                val cleanEncrypted = encryptedMatch
+                    .replace("\\'", "'")
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
 
-        if (!videoUrl.isNullOrEmpty()) {
-            val cleanUrl = videoUrl.replace("&amp;", "&").replace("\\", "")
+                // STEP 3: Decrypt the payload
+                val crackedJson = decodeKVS(cleanEncrypted)
+                
+                // Add the naked links to our search area
+                htmlToSearch += crackedJson 
+            }
             
-            callback.invoke(
-                newExtractorLink(
-                    source = this.name,
-                    name = this.name,
-                    url = cleanUrl,
-                    type = INFER_TYPE
-                ) {
-                    // Spoofing the origin so the server accepts our generated link
-                    this.referer = mainUrl
-                    this.headers = mapOf(
-                        "Referer" to data,
-                        "Origin" to mainUrl,
-                        "Accept" to "*/*"
-                    )
-                    this.quality = Qualities.Unknown.value
-                }
-            )
-        } else if (!iframeUrl.isNullOrEmpty()) {
-            loadExtractor(iframeUrl, data, subtitleCallback, callback)
+            // STEP 4: Grab the real link (now featuring its hash & time tokens!)
+            var videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:m3u8|mp4)[^"'\s\\]*)""").find(htmlToSearch)?.groupValues?.get(1)
+            
+            if (!videoUrl.isNullOrEmpty()) {
+                val cleanUrl = videoUrl.replace("&amp;", "&").replace("\\", "")
+                
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = this.name,
+                        url = cleanUrl,
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = iframeUrl
+                        this.headers = mapOf(
+                            "Referer" to iframeUrl,
+                            "Origin" to mainUrl,
+                            "Accept" to "*/*"
+                        )
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            } else {
+                // Failsafe backup
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
+            }
         }
         
         return true
