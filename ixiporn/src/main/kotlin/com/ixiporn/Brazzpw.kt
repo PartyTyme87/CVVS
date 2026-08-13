@@ -16,7 +16,13 @@ class Brazzpw : MainAPI() {
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
     override val mainPage = mainPageOf(
-        "${mainUrl}/page/" to "Latest Updates"
+        "${mainUrl}/page/" to "Latest Updates",
+        "${mainUrl}/videos/sortby/beingwatched/free-brazz-premium-full-new-2026/" to "Being Watched",
+        "${mainUrl}/videos/sortby/rating/free-brazz-premium-full-new-2026/" to "Top Rated",
+        "${mainUrl}/videos/sortby/views/free-brazz-premium-full-new-2026/" to "Most Viewed",
+        "${mainUrl}/videos/tags/79/milf/free-brazz-premium-full-new-2026/" to "MILF",
+        "${mainUrl}/videos/tags/103/asian/free-brazz-premium-full-new-2026/" to "Asian",
+        "${mainUrl}/videos/tags/112/black/free-brazz-premium-full-new-2026/" to "Black"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
