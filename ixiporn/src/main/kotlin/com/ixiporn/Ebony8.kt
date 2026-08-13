@@ -17,6 +17,7 @@ class Ebony8 : MainAPI() {
 
     // ADDED: A custom shelf for our 20+ Minute filter (pulling from latest updates)
     override val mainPage = mainPageOf(
+        "${mainUrl}/categories/" to "Categories",
         "${mainUrl}/latest-updates/" to "Latest Updates",
         "${mainUrl}/latest-updates/" to "20+ Minutes",
         "${mainUrl}/most-popular/" to "Most Popular",
