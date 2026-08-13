@@ -86,6 +86,32 @@ class Brazzpw : MainAPI() {
         }
     }
 
+    // THE FIX: This perfectly mimics how a browser reads Javascript memory
+    private fun unescapeJS(input: String): String {
+        val sb = java.lang.StringBuilder()
+        var i = 0
+        while (i < input.length) {
+            val c = input[i]
+            if (c == '\\' && i + 1 < input.length) {
+                val next = input[i + 1]
+                when (next) {
+                    'n' -> sb.append('\n')
+                    'r' -> sb.append('\r')
+                    't' -> sb.append('\t')
+                    '\'' -> sb.append('\'')
+                    '"' -> sb.append('"')
+                    '\\' -> sb.append('\\')
+                    else -> sb.append(next)
+                }
+                i += 2
+            } else {
+                sb.append(c)
+                i++
+            }
+        }
+        return sb.toString()
+    }
+
     // THE DECRYPTOR: Masterfully cracking KVS mathematical encryption
     private fun decodeKVS(encoded: String): String {
         val builder = java.lang.StringBuilder()
@@ -102,6 +128,7 @@ class Brazzpw : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+        val videoId = Regex("""/video/(\d+)""").find(data)?.groupValues?.get(1)
         val document = app.get(data).document
         
         var iframeUrl = document.selectFirst("meta[itemprop='embedURL']")?.attr("content") 
@@ -111,29 +138,23 @@ class Brazzpw : MainAPI() {
             iframeUrl = fixUrl(iframeUrl).replace("&amp;", "&")
             val playerHtml = app.get(iframeUrl, headers = mapOf("Referer" to data)).text
             
-            var htmlToSearch = playerHtml
+            var videoUrl: String? = null
             
-            // STEP 1: A massive Regex upgrade to swallow the entire encrypted payload!
-            val encryptedMatch = Regex("""var\s+d\s*=\s*'(.*?)'\.split\(""\)""").find(playerHtml)?.groupValues?.get(1)
+            // ATTACK 1: Flawless KVS Decryption
+            val encryptedMatch = Regex("""var\s+[a-zA-Z0-9_]+\s*=\s*'(.*?)'\.split\(""\)""").find(playerHtml)?.groupValues?.get(1)
             
             if (!encryptedMatch.isNullOrEmpty()) {
-                // STEP 2: We must clean up JavaScript escape characters so our math equation stays synced!
-                val cleanEncrypted = encryptedMatch
-                    .replace("\\'", "'")
-                    .replace("\\\"", "\"")
-                    .replace("\\\\", "\\")
-                    .replace("\\n", "\n")
-
-                // STEP 3: Decrypt the payload
+                val cleanEncrypted = unescapeJS(encryptedMatch) // Fix the shifting math!
                 val crackedJson = decodeKVS(cleanEncrypted)
-                
-                // Add the naked links to our search area
-                htmlToSearch += crackedJson 
+                videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:m3u8|mp4)[^"'\s\\]*)""").find(crackedJson)?.groupValues?.get(1)
             }
             
-            // STEP 4: Grab the real link (now featuring its hash & time tokens!)
-            var videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:m3u8|mp4)[^"'\s\\]*)""").find(htmlToSearch)?.groupValues?.get(1)
-            
+            // ATTACK 2: Your Time Token Discovery! (Used if Attack 1 fails)
+            if (videoUrl.isNullOrEmpty() && videoId != null) {
+                val token = (System.currentTimeMillis() / 10_000_000).toString()
+                videoUrl = "${mainUrl}/player/m3u8_$videoId.m3u8?hash=$token&time=$token"
+            }
+
             if (!videoUrl.isNullOrEmpty()) {
                 val cleanUrl = videoUrl.replace("&amp;", "&").replace("\\", "")
                 
@@ -144,6 +165,7 @@ class Brazzpw : MainAPI() {
                         url = cleanUrl,
                         type = INFER_TYPE
                     ) {
+                        // CRITICAL: Trick the server into thinking we are playing from their iframe!
                         this.referer = iframeUrl
                         this.headers = mapOf(
                             "Referer" to iframeUrl,
@@ -154,7 +176,6 @@ class Brazzpw : MainAPI() {
                     }
                 )
             } else {
-                // Failsafe backup
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
