@@ -26,7 +26,19 @@ class Brazzpw : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) request.data.replace("page/", "") else request.data + "$page/"
+        // FIXED: The smart URL builder that handles middle-injections for pagination
+        val url = if (page == 1) {
+            if (request.data.endsWith("/page/")) request.data.removeSuffix("page/") else request.data
+        } else {
+            if (request.data.contains("free-brazz-premium-full-new-2026/")) {
+                // Injects the page number directly into the middle of the category URL
+                request.data.replace("free-brazz-premium-full-new-2026/", "page/$page/free-brazz-premium-full-new-2026/")
+            } else {
+                // Standard end-of-URL pagination for the Latest Updates page
+                request.data + "$page/"
+            }
+        }
+        
         val document = app.get(url).document
         
         val home = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
@@ -92,7 +104,6 @@ class Brazzpw : MainAPI() {
         }
     }
 
-    // THE FIX: This perfectly mimics how a browser reads Javascript memory
     private fun unescapeJS(input: String): String {
         val sb = java.lang.StringBuilder()
         var i = 0
@@ -118,7 +129,6 @@ class Brazzpw : MainAPI() {
         return sb.toString()
     }
 
-    // THE DECRYPTOR: Masterfully cracking KVS mathematical encryption
     private fun decodeKVS(encoded: String): String {
         val builder = java.lang.StringBuilder()
         for (i in encoded.indices) {
@@ -146,16 +156,14 @@ class Brazzpw : MainAPI() {
             
             var videoUrl: String? = null
             
-            // ATTACK 1: Flawless KVS Decryption
             val encryptedMatch = Regex("""var\s+[a-zA-Z0-9_]+\s*=\s*'(.*?)'\.split\(""\)""").find(playerHtml)?.groupValues?.get(1)
             
             if (!encryptedMatch.isNullOrEmpty()) {
-                val cleanEncrypted = unescapeJS(encryptedMatch) // Fix the shifting math!
+                val cleanEncrypted = unescapeJS(encryptedMatch)
                 val crackedJson = decodeKVS(cleanEncrypted)
                 videoUrl = Regex("""(https?://[^"'\s\\]+?\.(?:m3u8|mp4)[^"'\s\\]*)""").find(crackedJson)?.groupValues?.get(1)
             }
             
-            // ATTACK 2: Your Time Token Discovery! (Used if Attack 1 fails)
             if (videoUrl.isNullOrEmpty() && videoId != null) {
                 val token = (System.currentTimeMillis() / 10_000_000).toString()
                 videoUrl = "${mainUrl}/player/m3u8_$videoId.m3u8?hash=$token&time=$token"
@@ -171,7 +179,6 @@ class Brazzpw : MainAPI() {
                         url = cleanUrl,
                         type = INFER_TYPE
                     ) {
-                        // CRITICAL: Trick the server into thinking we are playing from their iframe!
                         this.referer = iframeUrl
                         this.headers = mapOf(
                             "Referer" to iframeUrl,
