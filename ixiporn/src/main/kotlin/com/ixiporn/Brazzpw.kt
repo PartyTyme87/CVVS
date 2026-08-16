@@ -17,6 +17,7 @@ class Brazzpw : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/page/" to "Latest Updates",
+        "${mainUrl}/pornstars/gender/female/free-brazz-premium-full-new-2026/" to "Models", // ADDED: Your Models Shelf!
         "${mainUrl}/videos/sortby/beingwatched/free-brazz-premium-full-new-2026/" to "Being Watched",
         "${mainUrl}/videos/sortby/rating/free-brazz-premium-full-new-2026/" to "Top Rated",
         "${mainUrl}/videos/sortby/views/free-brazz-premium-full-new-2026/" to "Most Viewed",
@@ -26,22 +27,25 @@ class Brazzpw : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // FIXED: The smart URL builder that handles middle-injections for pagination
         val url = if (page == 1) {
             if (request.data.endsWith("/page/")) request.data.removeSuffix("page/") else request.data
         } else {
             if (request.data.contains("free-brazz-premium-full-new-2026/")) {
-                // Injects the page number directly into the middle of the category URL
                 request.data.replace("free-brazz-premium-full-new-2026/", "page/$page/free-brazz-premium-full-new-2026/")
             } else {
-                // Standard end-of-URL pagination for the Latest Updates page
                 request.data + "$page/"
             }
         }
         
         val document = app.get(url).document
         
-        val home = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
+        // Check if the current shelf is the Models shelf
+        val isModelShelf = request.name == "Models" || request.data.contains("/pornstars/")
+        
+        // Grab the items (broadened slightly just in case models use a different class)
+        val home = document.select("article.loop-video, article.thumb-block, article").mapNotNull { 
+            it.toSearchResult(isModelShelf) 
+        }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -53,13 +57,17 @@ class Brazzpw : MainAPI() {
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse? {
+    // UPDATED: Incorporating your TvSeries snippet!
+    private fun Element.toSearchResult(isModel: Boolean = false): SearchResponse? {
         val linkElement = this.selectFirst("a") ?: return null
-        
-        val title = linkElement.attr("title").trim()
-        if (title.isEmpty()) return null
-        
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
+        
+        // Backup title checks in case the title attribute is empty on model cards
+        val title = linkElement.attr("title").takeIf { it.isNotBlank() }
+            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+            ?: linkElement.text().trim()
+            
+        if (title.isEmpty()) return null
         
         val img = this.selectFirst("img")
         val posterUrl = fixUrlNull(
@@ -67,8 +75,15 @@ class Brazzpw : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
+        // If it's a model, tell Cloudstream it's a TV Series (folder)!
+        return if (isModel || href.contains("/pornstar") || href.contains("/model")) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+            }
+        } else {
+            newMovieSearchResponse(title, href, TvType.NSFW) {
+                this.posterUrl = posterUrl
+            }
         }
     }
 
@@ -98,6 +113,36 @@ class Brazzpw : MainAPI() {
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
+        // UPDATED: If the user clicked a Model, scrape all the videos on their page!
+        if (url.contains("/pornstar") || url.contains("/model")) {
+            val episodes = document.select("article.loop-video, article.thumb-block").mapNotNull { elem ->
+                val link = elem.selectFirst("a") ?: return@mapNotNull null
+                val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                
+                val epTitle = link.attr("title").takeIf { it.isNotBlank() } 
+                    ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                    ?: "Video"
+                    
+                val epImg = elem.selectFirst("img")
+                val epPoster = fixUrlNull(
+                    epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                    ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
+                )
+                
+                newEpisode(epHref) {
+                    this.name = epTitle
+                    this.posterUrl = epPoster
+                }
+            }
+            
+            // Return a Series response featuring the episodes we just scraped
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = description
+            }
+        }
+
+        // Standard Movie response for regular video links
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
