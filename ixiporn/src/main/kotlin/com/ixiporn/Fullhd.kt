@@ -33,10 +33,8 @@ class Fullhd : MainAPI() {
         val document = app.get(url).document
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        // Broadened to catch all model, site, and video grid variations
-        val home = document.select("div.item, div.video-item, div.model-item, div.site-item, div.item-model, div.item-site, div.model, div[class*='item']")
-            .mapNotNull { it.toSearchResult(isFolderShelf) }
-            .distinctBy { it.url }
+        // FIXED: Dropped the 'div' requirement. We now look for ANY element with class 'item' or 'video-item'
+        val home = document.select(".item, .video-item").mapNotNull { it.toSearchResult(isFolderShelf) }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -49,7 +47,10 @@ class Fullhd : MainAPI() {
     }
 
     private fun Element.toSearchResult(isFolderShelf: Boolean = false): SearchResponse? {
-        val linkElement = this.selectFirst("a") ?: return null
+        // FIXED: If the item IS the link (like Models), use it. If it's a div, search inside it for the link.
+        val linkElement = if (this.tagName() == "a") this else this.selectFirst("a")
+        if (linkElement == null) return null
+        
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
         val title = this.selectFirst("strong.title")?.text()?.trim() 
@@ -59,7 +60,8 @@ class Fullhd : MainAPI() {
             
         if (title.isEmpty()) return null
         
-        val img = this.selectFirst("img")
+        // FIXED: Targets img.thumb to avoid accidentally grabbing the little country flag icons!
+        val img = this.selectFirst("img.thumb") ?: this.selectFirst("img")
         val posterUrl = fixUrlNull(
             img?.attr("data-original")?.takeIf { it.isNotBlank() }
             ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
@@ -88,7 +90,7 @@ class Fullhd : MainAPI() {
         for (i in 1..10) {
             val url = "${mainUrl}/search/$safeQuery/$i/"
             val document = app.get(url).document
-            val results = document.select("div.item, div.video-item, div[class*='item']").mapNotNull { it.toSearchResult() }
+            val results = document.select(".item, .video-item").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
             if (results.isEmpty()) break
@@ -111,13 +113,15 @@ class Fullhd : MainAPI() {
 
         val isFolderLink = url.contains("/models/") || url.contains("/sites/") || url.contains("/model/") || url.contains("/site/")
 
-        // If it's a Model or Site folder, load its videos as episodes
         if (isFolderLink) {
-            val episodes = document.select("div.item, div.video-item, div[class*='item']").mapNotNull { elem ->
-                val link = elem.selectFirst("a") ?: return@mapNotNull null
+            // Scrape the episodes (videos) inside the model's page
+            val episodes = document.select(".item, .video-item").mapNotNull { elem ->
+                val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
+                if (link == null) return@mapNotNull null
+                
                 val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
                 
-                // Exclude self/pagination links
+                // Exclude links that point to other models/sites to prevent nested folder glitches
                 if (epHref == url || epHref.contains("/models/") || epHref.contains("/sites/")) return@mapNotNull null
 
                 val epTitle = elem.selectFirst("strong.title")?.text()?.trim() 
@@ -125,7 +129,7 @@ class Fullhd : MainAPI() {
                     ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
                     ?: "Video"
                     
-                val epImg = elem.selectFirst("img")
+                val epImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
                 val epPoster = fixUrlNull(
                     epImg?.attr("data-original")?.takeIf { it.isNotBlank() }
                     ?: epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
