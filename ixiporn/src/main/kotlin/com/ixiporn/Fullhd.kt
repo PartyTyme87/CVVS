@@ -33,7 +33,6 @@ class Fullhd : MainAPI() {
         val document = app.get(url).document
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        // FIXED: Dropped the 'div' requirement. We now look for ANY element with class 'item' or 'video-item'
         val home = document.select(".item, .video-item").mapNotNull { it.toSearchResult(isFolderShelf) }
 
         return newHomePageResponse(
@@ -47,7 +46,6 @@ class Fullhd : MainAPI() {
     }
 
     private fun Element.toSearchResult(isFolderShelf: Boolean = false): SearchResponse? {
-        // FIXED: If the item IS the link (like Models), use it. If it's a div, search inside it for the link.
         val linkElement = if (this.tagName() == "a") this else this.selectFirst("a")
         if (linkElement == null) return null
         
@@ -60,7 +58,6 @@ class Fullhd : MainAPI() {
             
         if (title.isEmpty()) return null
         
-        // FIXED: Targets img.thumb to avoid accidentally grabbing the little country flag icons!
         val img = this.selectFirst("img.thumb") ?: this.selectFirst("img")
         val posterUrl = fixUrlNull(
             img?.attr("data-original")?.takeIf { it.isNotBlank() }
@@ -114,35 +111,63 @@ class Fullhd : MainAPI() {
         val isFolderLink = url.contains("/models/") || url.contains("/sites/") || url.contains("/model/") || url.contains("/site/")
 
         if (isFolderLink) {
-            // Scrape the episodes (videos) inside the model's page
-            val episodes = document.select(".item, .video-item").mapNotNull { elem ->
-                val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
-                if (link == null) return@mapNotNull null
-                
-                val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
-                
-                // Exclude links that point to other models/sites to prevent nested folder glitches
-                if (epHref == url || epHref.contains("/models/") || epHref.contains("/sites/")) return@mapNotNull null
-
-                val epTitle = elem.selectFirst("strong.title")?.text()?.trim() 
-                    ?: link.attr("title").takeIf { it.isNotBlank() } 
-                    ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
-                    ?: "Video"
-                    
-                val epImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
-                val epPoster = fixUrlNull(
-                    epImg?.attr("data-original")?.takeIf { it.isNotBlank() }
-                    ?: epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
-                    ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
-                )
-                
-                newEpisode(epHref) {
-                    this.name = epTitle
-                    this.posterUrl = epPoster
+            val episodes = mutableListOf<Episode>()
+            var page = 1
+            var hasNext = true
+            
+            // FIXED: Background loop that automatically scrapes up to 15 pages of videos!
+            while (hasNext && page <= 15) {
+                val pageUrl = if (page == 1) url else {
+                    if (url.endsWith("/")) "${url}${page}/" else "${url}/${page}/"
                 }
+                
+                try {
+                    val doc = if (page == 1) document else app.get(pageUrl).document
+                    
+                    val items = doc.select(".item, .video-item").mapNotNull { elem ->
+                        val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
+                        if (link == null) return@mapNotNull null
+                        
+                        val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                        
+                        if (epHref == url || epHref.contains("/models/") || epHref.contains("/sites/")) return@mapNotNull null
+
+                        val epTitle = elem.selectFirst("strong.title")?.text()?.trim() 
+                            ?: link.attr("title").takeIf { it.isNotBlank() } 
+                            ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                            ?: "Video"
+                            
+                        val epImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
+                        val epPoster = fixUrlNull(
+                            epImg?.attr("data-original")?.takeIf { it.isNotBlank() }
+                            ?: epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                            ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
+                        )
+                        
+                        newEpisode(epHref) {
+                            this.name = epTitle
+                            this.posterUrl = epPoster
+                        }
+                    }
+                    
+                    if (items.isEmpty()) {
+                        hasNext = false
+                    } else {
+                        // Anti-Loop Security: If the site redirects us back to page 1, kill the loop.
+                        if (page > 1 && episodes.isNotEmpty() && items.first().data == episodes.first().data) {
+                            hasNext = false
+                        } else {
+                            episodes.addAll(items)
+                        }
+                    }
+                } catch (e: Exception) {
+                    hasNext = false // Kill the loop on network error (like a 404 Page Not Found)
+                }
+                
+                page++
             }
             
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = description
             }
