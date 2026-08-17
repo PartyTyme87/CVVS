@@ -33,7 +33,8 @@ class Fullhd : MainAPI() {
         val document = app.get(url).document
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        val home = document.select(".item, .video-item").mapNotNull { it.toSearchResult(isFolderShelf) }
+        // ADDED: div.headline:has(a.more) carefully grabs the text-based studio buttons!
+        val home = document.select(".item, .video-item, div.headline:has(a.more)").mapNotNull { it.toSearchResult(isFolderShelf) }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -51,10 +52,15 @@ class Fullhd : MainAPI() {
         
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        val title = this.selectFirst("strong.title")?.text()?.trim() 
-            ?: linkElement.attr("title").takeIf { it.isNotBlank() }
-            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
-            ?: linkElement.text().trim()
+        // ADDED: If it's a Studio block, grab the H2 tag. Otherwise, do the normal image/link title check.
+        val title = if (this.hasClass("headline")) {
+            this.selectFirst("h2")?.text()?.trim() ?: linkElement.text().trim()
+        } else {
+            this.selectFirst("strong.title")?.text()?.trim() 
+                ?: linkElement.attr("title").takeIf { it.isNotBlank() }
+                ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                ?: linkElement.text().trim()
+        }
             
         if (title.isEmpty()) return null
         
@@ -115,8 +121,7 @@ class Fullhd : MainAPI() {
             var page = 1
             var hasNext = true
             
-            // FIXED: Background loop that automatically scrapes up to 15 pages of videos!
-            while (hasNext && page <= 15) {
+            while (hasNext && page <= 400) {
                 val pageUrl = if (page == 1) url else {
                     if (url.endsWith("/")) "${url}${page}/" else "${url}/${page}/"
                 }
@@ -124,6 +129,7 @@ class Fullhd : MainAPI() {
                 try {
                     val doc = if (page == 1) document else app.get(pageUrl).document
                     
+                    // Notice we only scrape ".item, .video-item" here so we don't accidentally load other studio buttons as videos!
                     val items = doc.select(".item, .video-item").mapNotNull { elem ->
                         val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
                         if (link == null) return@mapNotNull null
@@ -153,7 +159,6 @@ class Fullhd : MainAPI() {
                     if (items.isEmpty()) {
                         hasNext = false
                     } else {
-                        // Anti-Loop Security: If the site redirects us back to page 1, kill the loop.
                         if (page > 1 && episodes.isNotEmpty() && items.first().data == episodes.first().data) {
                             hasNext = false
                         } else {
@@ -161,7 +166,7 @@ class Fullhd : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    hasNext = false // Kill the loop on network error (like a 404 Page Not Found)
+                    hasNext = false
                 }
                 
                 page++
