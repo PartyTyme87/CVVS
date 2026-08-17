@@ -33,8 +33,24 @@ class Fullhd : MainAPI() {
         val document = app.get(url).document
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        // ADDED: div.headline:has(a.more) carefully grabs the text-based studio buttons!
-        val home = document.select(".item, .video-item, div.headline:has(a.more)").mapNotNull { it.toSearchResult(isFolderShelf) }
+        // SMART LOGIC: We change what we are hunting for based on which shelf we are building!
+        val selector = if (request.name == "Sites") {
+            "div.headline:has(a.more)" // Only grab the studio headers, ignore the preview videos!
+        } else {
+            ".item, .video-item"
+        }
+        
+        val home = document.select(selector).mapNotNull { elem ->
+            val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
+            val href = link?.attr("href") ?: ""
+            
+            // EXTRA SECURITY: If we are on the Models shelf, instantly block any video preview links from leaking in
+            if (request.name == "Models" && (!href.contains("/model/") && !href.contains("/models/"))) {
+                return@mapNotNull null
+            }
+            
+            elem.toSearchResult(isFolderShelf)
+        }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -52,7 +68,6 @@ class Fullhd : MainAPI() {
         
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // ADDED: If it's a Studio block, grab the H2 tag. Otherwise, do the normal image/link title check.
         val title = if (this.hasClass("headline")) {
             this.selectFirst("h2")?.text()?.trim() ?: linkElement.text().trim()
         } else {
@@ -129,7 +144,6 @@ class Fullhd : MainAPI() {
                 try {
                     val doc = if (page == 1) document else app.get(pageUrl).document
                     
-                    // Notice we only scrape ".item, .video-item" here so we don't accidentally load other studio buttons as videos!
                     val items = doc.select(".item, .video-item").mapNotNull { elem ->
                         val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
                         if (link == null) return@mapNotNull null
