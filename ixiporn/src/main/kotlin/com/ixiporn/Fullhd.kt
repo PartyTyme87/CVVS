@@ -15,7 +15,6 @@ class Fullhd : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // ADDED: Models and Sites added as your new custom shelves
     override val mainPage = mainPageOf(
         "${mainUrl}/latest-updates/" to "Latest Updates",
         "${mainUrl}/top-rated/" to "Top Rated",
@@ -28,19 +27,16 @@ class Fullhd : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // e.g., turns /models/ into /models/2/
             request.data + "$page/"
         }
         
         val document = app.get(url).document
-        
-        // Detect if the user is currently browsing a folder shelf
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        // Broadened selectors to safely catch models/sites if they use different grid wrappers
-        val home = document.select("div.item, div.video-item, div.model-item, div.site-item").mapNotNull { 
-            it.toSearchResult(isFolderShelf) 
-        }
+        // Broadened to catch all model, site, and video grid variations
+        val home = document.select("div.item, div.video-item, div.model-item, div.site-item, div.item-model, div.item-site, div.model, div[class*='item']")
+            .mapNotNull { it.toSearchResult(isFolderShelf) }
+            .distinctBy { it.url }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -52,24 +48,26 @@ class Fullhd : MainAPI() {
         )
     }
 
-    // UPDATED: Now checks for folder links and outputs TvSeries (Folders) when needed
     private fun Element.toSearchResult(isFolderShelf: Boolean = false): SearchResponse? {
         val linkElement = this.selectFirst("a") ?: return null
+        val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
         val title = this.selectFirst("strong.title")?.text()?.trim() 
             ?: linkElement.attr("title").takeIf { it.isNotBlank() }
-            ?: this.selectFirst("img")?.attr("alt")?.trim()
-            ?: return null
+            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+            ?: linkElement.text().trim()
             
-        val href = fixUrlNull(linkElement.attr("href")) ?: return null
+        if (title.isEmpty()) return null
         
         val img = this.selectFirst("img")
         val posterUrl = fixUrlNull(
-            img?.attr("data-src")?.takeIf { it.isNotBlank() } 
+            img?.attr("data-original")?.takeIf { it.isNotBlank() }
+            ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
+            ?: img?.attr("data-lazy")?.takeIf { it.isNotBlank() }
+            ?: img?.attr("data-webp")?.takeIf { it.isNotBlank() }
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        // Safety check to ensure any link containing /models/ or /sites/ gets treated as a folder
         val isFolder = isFolderShelf || href.contains("/models/") || href.contains("/sites/") || href.contains("/model/") || href.contains("/site/")
 
         return if (isFolder) {
@@ -90,7 +88,7 @@ class Fullhd : MainAPI() {
         for (i in 1..10) {
             val url = "${mainUrl}/search/$safeQuery/$i/"
             val document = app.get(url).document
-            val results = document.select("div.item, div.video-item").mapNotNull { it.toSearchResult() }
+            val results = document.select("div.item, div.video-item, div[class*='item']").mapNotNull { it.toSearchResult() }
 
             if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
             if (results.isEmpty()) break
@@ -105,17 +103,23 @@ class Fullhd : MainAPI() {
             ?: document.selectFirst("title")?.text()?.trim() 
             ?: "Video"
             
-        val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
+        val poster = fixUrlNull(
+            document.selectFirst("meta[property='og:image']")?.attr("content")
+            ?: document.selectFirst("img.thumb")?.attr("src")
+        )
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
         val isFolderLink = url.contains("/models/") || url.contains("/sites/") || url.contains("/model/") || url.contains("/site/")
 
-        // UPDATED: If the user clicked a Model or Site, scrape all the videos on their page!
+        // If it's a Model or Site folder, load its videos as episodes
         if (isFolderLink) {
-            val episodes = document.select("div.item, div.video-item").mapNotNull { elem ->
+            val episodes = document.select("div.item, div.video-item, div[class*='item']").mapNotNull { elem ->
                 val link = elem.selectFirst("a") ?: return@mapNotNull null
                 val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
                 
+                // Exclude self/pagination links
+                if (epHref == url || epHref.contains("/models/") || epHref.contains("/sites/")) return@mapNotNull null
+
                 val epTitle = elem.selectFirst("strong.title")?.text()?.trim() 
                     ?: link.attr("title").takeIf { it.isNotBlank() } 
                     ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
@@ -123,7 +127,8 @@ class Fullhd : MainAPI() {
                     
                 val epImg = elem.selectFirst("img")
                 val epPoster = fixUrlNull(
-                    epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                    epImg?.attr("data-original")?.takeIf { it.isNotBlank() }
+                    ?: epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
                     ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
                 )
                 
@@ -133,14 +138,12 @@ class Fullhd : MainAPI() {
                 }
             }
             
-            // Return a TvSeries response featuring the episodes we just scraped
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
             }
         }
 
-        // Standard Movie response for regular video links
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
@@ -149,7 +152,6 @@ class Fullhd : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data).document
-        
         val sources = document.select("source")
         var foundLinks = false
         
@@ -159,7 +161,6 @@ class Fullhd : MainAPI() {
             
             if (src.isNotBlank()) {
                 foundLinks = true
-                
                 val quality = when {
                     label.contains("2160") -> Qualities.P2160.value
                     label.contains("1080") -> Qualities.P1080.value
