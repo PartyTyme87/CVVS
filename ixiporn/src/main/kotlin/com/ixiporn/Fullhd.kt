@@ -33,9 +33,8 @@ class Fullhd : MainAPI() {
         val document = app.get(url).document
         val isFolderShelf = request.name == "Models" || request.name == "Sites"
         
-        // SMART LOGIC: We change what we are hunting for based on which shelf we are building!
         val selector = if (request.name == "Sites") {
-            "div.headline:has(a.more)" // Only grab the studio headers, ignore the preview videos!
+            "div.headline:has(a.more)" 
         } else {
             ".item, .video-item"
         }
@@ -44,7 +43,6 @@ class Fullhd : MainAPI() {
             val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
             val href = link?.attr("href") ?: ""
             
-            // EXTRA SECURITY: If we are on the Models shelf, instantly block any video preview links from leaking in
             if (request.name == "Models" && (!href.contains("/model/") && !href.contains("/models/"))) {
                 return@mapNotNull null
             }
@@ -103,15 +101,29 @@ class Fullhd : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
+        // Format the query with pluses (standard for this platform)
         val safeQuery = query.replace(" ", "+")
 
-        for (i in 1..10) {
-            val url = "${mainUrl}/search/$safeQuery/$i/"
-            val document = app.get(url).document
-            val results = document.select(".item, .video-item").mapNotNull { it.toSearchResult() }
+        for (i in 1..5) { // Scrape up to 5 pages of search results
+            // FIXED: Drop the "/1/" on the first page so the server doesn't throw a 404!
+            val url = if (i == 1) "${mainUrl}/search/$safeQuery/" else "${mainUrl}/search/$safeQuery/$i/"
+            
+            try {
+                val document = app.get(url).document
+                val results = document.select(".item, .video-item").mapNotNull { it.toSearchResult() }
 
-            if (!searchResponse.containsAll(results)) searchResponse.addAll(results) else break
-            if (results.isEmpty()) break
+                if (results.isEmpty()) break
+                
+                // Add to list, ensuring no duplicates
+                results.forEach { res ->
+                    if (searchResponse.none { it.url == res.url }) {
+                        searchResponse.add(res)
+                    }
+                }
+            } catch (e: Exception) {
+                // If a page returns a 404 (meaning we ran out of results), gracefully exit the loop
+                break
+            }
         }
         return searchResponse
     }
@@ -136,7 +148,7 @@ class Fullhd : MainAPI() {
             var page = 1
             var hasNext = true
             
-            while (hasNext && page <= 400) {
+            while (hasNext && page <= 15) {
                 val pageUrl = if (page == 1) url else {
                     if (url.endsWith("/")) "${url}${page}/" else "${url}/${page}/"
                 }
