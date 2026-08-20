@@ -137,11 +137,16 @@ class Fullhd : MainAPI() {
         )
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
-        // FIXED: Now perfectly targets the 'btn_tag' class you found in the HTML!
         val tags = document.select("a.btn_tag")
             .map { it.text().trim() }
             .filter { it.isNotBlank() }
             .distinct()
+
+        // ADDED: Scrapes the actor links and converts them to Cloudstream's Actor format
+        val actorsList = document.select("a.btn_model").mapNotNull { elem ->
+            val name = elem.text().trim()
+            if (name.isNotBlank()) ActorData(Actor(name)) else null
+        }
 
         val isFolderLink = url.contains("/models/") || url.contains("/sites/") || url.contains("/model/") || url.contains("/site/")
 
@@ -204,6 +209,32 @@ class Fullhd : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
+                this.actors = actorsList // Plugs the actors into the folder page
+            }
+        }
+
+        val recommendations = document.select(".item, .video-item").mapNotNull { elem ->
+            val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
+            if (link == null) return@mapNotNull null
+            
+            val recHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+            
+            if (recHref == url) return@mapNotNull null
+
+            val recTitle = elem.selectFirst("strong.title")?.text()?.trim() 
+                ?: link.attr("title").takeIf { it.isNotBlank() } 
+                ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                ?: "Video"
+                
+            val recImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
+            val recPoster = fixUrlNull(
+                recImg?.attr("data-original")?.takeIf { it.isNotBlank() }
+                ?: recImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                ?: recImg?.attr("src")?.takeIf { it.isNotBlank() }
+            )
+            
+            newMovieSearchResponse(recTitle, recHref, TvType.NSFW) {
+                this.posterUrl = recPoster
             }
         }
 
@@ -211,6 +242,8 @@ class Fullhd : MainAPI() {
             this.posterUrl = poster
             this.plot      = description
             this.tags      = tags
+            this.actors    = actorsList // Plugs the actors into the movie page
+            this.recommendations = recommendations
         }
     }
 
