@@ -137,8 +137,8 @@ class Fullhd : MainAPI() {
         )
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
-        // ADDED: Hunts down any links pointing to tags, categories, or models and scoops up their text
-        val tags = document.select("a[href*='/tags/'], a[href*='/categories/'], a[href*='/models/'], a[href*='/sites/']")
+        // FIXED: Now perfectly targets the 'btn_tag' class you found in the HTML!
+        val tags = document.select("a.btn_tag")
             .map { it.text().trim() }
             .filter { it.isNotBlank() }
             .distinct()
@@ -203,14 +203,14 @@ class Fullhd : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = description
-                this.tags = tags // Plugs the tags into the Series page
+                this.tags = tags
             }
         }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
-            this.tags      = tags // Plugs the tags into the Movie page
+            this.tags      = tags
         }
     }
 
