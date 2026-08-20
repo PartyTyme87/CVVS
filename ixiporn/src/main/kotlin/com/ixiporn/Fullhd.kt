@@ -101,11 +101,9 @@ class Fullhd : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-        // Format the query with pluses (standard for this platform)
         val safeQuery = query.replace(" ", "+")
 
-        for (i in 1..5) { // Scrape up to 5 pages of search results
-            // FIXED: Drop the "/1/" on the first page so the server doesn't throw a 404!
+        for (i in 1..5) {
             val url = if (i == 1) "${mainUrl}/search/$safeQuery/" else "${mainUrl}/search/$safeQuery/$i/"
             
             try {
@@ -114,14 +112,12 @@ class Fullhd : MainAPI() {
 
                 if (results.isEmpty()) break
                 
-                // Add to list, ensuring no duplicates
                 results.forEach { res ->
                     if (searchResponse.none { it.url == res.url }) {
                         searchResponse.add(res)
                     }
                 }
             } catch (e: Exception) {
-                // If a page returns a 404 (meaning we ran out of results), gracefully exit the loop
                 break
             }
         }
@@ -140,6 +136,12 @@ class Fullhd : MainAPI() {
             ?: document.selectFirst("img.thumb")?.attr("src")
         )
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
+
+        // ADDED: Hunts down any links pointing to tags, categories, or models and scoops up their text
+        val tags = document.select("a[href*='/tags/'], a[href*='/categories/'], a[href*='/models/'], a[href*='/sites/']")
+            .map { it.text().trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
 
         val isFolderLink = url.contains("/models/") || url.contains("/sites/") || url.contains("/model/") || url.contains("/site/")
 
@@ -201,12 +203,14 @@ class Fullhd : MainAPI() {
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = description
+                this.tags = tags // Plugs the tags into the Series page
             }
         }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
+            this.tags      = tags // Plugs the tags into the Movie page
         }
     }
 
