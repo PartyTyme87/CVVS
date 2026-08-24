@@ -15,7 +15,6 @@ class Hqporner : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // We can customize these shelves later once we see what categories the site actually uses!
     override val mainPage = mainPageOf(
         "${mainUrl}/" to "Home"
     )
@@ -24,7 +23,6 @@ class Hqporner : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // Adjusts pagination based on standard KVS logic, we may need to tweak this!
             if (request.data.endsWith("/")) "${request.data}page/$page/" else "${request.data}/page/$page/"
         }
         
@@ -34,7 +32,8 @@ class Hqporner : MainAPI() {
         val selector = if (request.name == "Sites") {
             "div.headline:has(a.more)" 
         } else {
-            ".item, .video-item, .box, .video" // Added some common alternative classes just in case
+            // FIXED: Added 'a.image' and 'a.image.featured' to grab the HQPorner grid style
+            ".item, .video-item, .box, .video, a.image.featured, a.image" 
         }
         
         val home = document.select(selector).mapNotNull { elem ->
@@ -68,8 +67,8 @@ class Hqporner : MainAPI() {
             this.selectFirst("h2")?.text()?.trim() ?: linkElement.text().trim()
         } else {
             this.selectFirst("strong.title")?.text()?.trim() 
-                ?: linkElement.attr("title").takeIf { it.isNotBlank() }
                 ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                ?: linkElement.attr("title").takeIf { it.isNotBlank() }
                 ?: linkElement.text().trim()
         }
             
@@ -106,7 +105,7 @@ class Hqporner : MainAPI() {
             
             try {
                 val document = app.get(url).document
-                val results = document.select(".item, .video-item, .box, .video").mapNotNull { it.toSearchResult() }
+                val results = document.select(".item, .video-item, .box, .video, a.image.featured, a.image").mapNotNull { it.toSearchResult() }
 
                 if (results.isEmpty()) break
                 
@@ -160,7 +159,7 @@ class Hqporner : MainAPI() {
                 try {
                     val doc = if (page == 1) document else app.get(pageUrl).document
                     
-                    val items = doc.select(".item, .video-item, .box, .video").mapNotNull { elem ->
+                    val items = doc.select(".item, .video-item, .box, .video, a.image.featured, a.image").mapNotNull { elem ->
                         val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
                         if (link == null) return@mapNotNull null
                         
@@ -169,8 +168,8 @@ class Hqporner : MainAPI() {
                         if (epHref == url || epHref.contains("/models/") || epHref.contains("/sites/")) return@mapNotNull null
 
                         val epTitle = elem.selectFirst("strong.title")?.text()?.trim() 
+                            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
                             ?: link.attr("title").takeIf { it.isNotBlank() } 
-                            ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
                             ?: "Video"
                             
                         val epImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
@@ -210,7 +209,7 @@ class Hqporner : MainAPI() {
             }
         }
 
-        val recommendations = document.select(".item, .video-item, .box, .video").mapNotNull { elem ->
+        val recommendations = document.select(".item, .video-item, .box, .video, a.image.featured, a.image").mapNotNull { elem ->
             val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
             if (link == null) return@mapNotNull null
             
@@ -219,8 +218,8 @@ class Hqporner : MainAPI() {
             if (recHref == url) return@mapNotNull null
 
             val recTitle = elem.selectFirst("strong.title")?.text()?.trim() 
-                ?: link.attr("title").takeIf { it.isNotBlank() } 
                 ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                ?: link.attr("title").takeIf { it.isNotBlank() } 
                 ?: "Video"
                 
             val recImg = elem.selectFirst("img.thumb") ?: elem.selectFirst("img")
@@ -251,7 +250,8 @@ class Hqporner : MainAPI() {
         
         for (source in sources) {
             val src = source.attr("src")
-            val label = source.attr("label") ?: ""
+            // FIXED: Now checks for 'title' first, as HQPorner stores quality names there (e.g. title="1080p")
+            val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: ""
             
             if (src.isNotBlank()) {
                 foundLinks = true
@@ -268,7 +268,7 @@ class Hqporner : MainAPI() {
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} $label".trim(),
-                        url = src,
+                        url = fixUrl(src), // FIXED: Adds 'https:' to links that start with '//'
                         type = INFER_TYPE
                     ) {
                         this.referer = mainUrl
@@ -282,7 +282,6 @@ class Hqporner : MainAPI() {
         if (!foundLinks) {
             val videoUrl = document.selectFirst("video")?.attr("src") ?: document.selectFirst("iframe")?.attr("src")
             if (!videoUrl.isNullOrEmpty()) {
-                // If it's an iframe, pass it to Cloudstream's universal extractor just in case
                 if (videoUrl.contains("iframe", ignoreCase = true) || videoUrl.contains("embed", ignoreCase = true)) {
                     loadExtractor(fixUrl(videoUrl), data, subtitleCallback, callback)
                 } else {
@@ -290,7 +289,7 @@ class Hqporner : MainAPI() {
                         newExtractorLink(
                             source = this.name,
                             name = this.name,
-                            url = videoUrl,
+                            url = fixUrl(videoUrl), // FIXED: Adds 'https:' here too just in case!
                             type = INFER_TYPE
                         ) {
                             this.referer = mainUrl
