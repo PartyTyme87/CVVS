@@ -4,171 +4,228 @@ import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 
-class HQPorner : MainAPI() {
+class Hqporner : MainAPI() {
     override var mainUrl              = "https://hqporner.com"
     override var name                 = "HQporner"
     override val hasMainPage          = true
     override var lang                 = "en"
-    override val hasQuickSearch       = false
+    override val hasQuickSearch       = true
+    override val hasDownloadSupport   = true
     override val supportedTypes       = setOf(TvType.NSFW)
+    override val vpnStatus            = VPNStatus.MightBeNeeded
 
+    // Your brilliant category shelf mapping!
     override val mainPage = mainPageOf(
-        "${mainUrl}/top"                           to "All time best porn",
-        "${mainUrl}/top/month"                     to "Month top porn",
-        "${mainUrl}/top/week"                      to "Week top porn",
-        "${mainUrl}/category/1080p-porn"           to "1080p porn",
-        "${mainUrl}/category/4k-porn"              to "4k porn",
-        "${mainUrl}/category/60fps-porn"           to "60fps",
-        "${mainUrl}/category/amateur"              to "Amateur",
-        "${mainUrl}/category/anal-sex-hd"          to "Anal",
-        "${mainUrl}/category/asian"                to "Asian",
-        "${mainUrl}/category/babe"                 to "Babe",
-        "${mainUrl}/category/bdsm"                 to "Bdsm",
-        "${mainUrl}/category/beach-porn"           to "Beach",
-        "${mainUrl}/category/big-ass"              to "Big Ass",
-        "${mainUrl}/category/big-dick"             to "Big dick",
-        "${mainUrl}/category/big-tits"             to "Big Tits",
-        "${mainUrl}/category/blonde"               to "Blonde",
-        "${mainUrl}/category/blowjob"              to "Blowjob",
-        "${mainUrl}/category/bondage"              to "Bondage",
-        "${mainUrl}/category/brunette"             to "Brunette",
-        "${mainUrl}/category/casting"              to "Casting",
-        "${mainUrl}/category/creampie"             to "Creampie",
-        "${mainUrl}/category/cumshot"              to "Cumshot",
-//        "${mainUrl}/category/deepthroat"           to "deepthroat",
-        "${mainUrl}/category/ebony"                to "Ebony",
-//        "${mainUrl}/category/fetish"               to "fetish",
-//        "${mainUrl}/category/fingering"            to "fingering",
-//        "${mainUrl}/category/fisting"              to "fisting",
-        "${mainUrl}/category/gangbang"             to "GangBang",
-//        "${mainUrl}/category/group-sex"            to "group sex",
-//        "${mainUrl}/category/hairy-pussy"          to "hairy pussy",
-        "${mainUrl}/category/handjob"              to "HandJob",
-//        "${mainUrl}/category/hentai"               to "hentai",
-//        "${mainUrl}/category/interracial"          to "interracial",
+        "${mainUrl}/top"                   to "All time best porn",
+        "${mainUrl}/top/month"             to "Month top porn",
+        "${mainUrl}/top/week"              to "Week top porn",
+        "${mainUrl}/category/1080p-porn"   to "1080p porn",
+        "${mainUrl}/category/4k-porn"      to "4k porn",
+        "${mainUrl}/category/60fps-porn"   to "60fps",
+        "${mainUrl}/category/amateur"      to "Amateur",
+        "${mainUrl}/category/anal-sex-hd"  to "Anal",
+        "${mainUrl}/category/asian"        to "Asian",
+        "${mainUrl}/category/babe"         to "Babe",
+        "${mainUrl}/category/bdsm"         to "Bdsm",
+        "${mainUrl}/category/beach-porn"   to "Beach",
+        "${mainUrl}/category/big-ass"      to "Big Ass",
+        "${mainUrl}/category/big-dick"     to "Big dick",
+        "${mainUrl}/category/big-tits"     to "Big Tits",
+        "${mainUrl}/category/blonde"       to "Blonde",
+        "${mainUrl}/category/blowjob"      to "Blowjob",
+        "${mainUrl}/category/bondage"      to "Bondage",
+        "${mainUrl}/category/brunette"     to "Brunette",
+        "${mainUrl}/category/casting"      to "Casting",
+        "${mainUrl}/category/creampie"     to "Creampie",
+        "${mainUrl}/category/cumshot"      to "Cumshot",
+        "${mainUrl}/category/ebony"        to "Ebony",
+        "${mainUrl}/category/gangbang"     to "GangBang",
+        "${mainUrl}/category/handjob"      to "HandJob",
         "${mainUrl}/category/japanese-girls-porn"  to "Japanese",
-//        "${mainUrl}/category/latina"               to "latina",
-        "${mainUrl}/category/lesbian"              to "Lesbian",
-//        "${mainUrl}/category/long-hair"            to "long hair",
-//        "${mainUrl}/category/masturbation"         to "masturbation",
-        "${mainUrl}/category/mature"               to "Mature",
-        "${mainUrl}/category/milf"                 to "Milf",
-//        "${mainUrl}/category/moaning"              to "moaning",
-        "${mainUrl}/category/old-and-young"        to "Old and Young",
-//        "${mainUrl}/category/orgasm"               to "orgasm",
-//        "${mainUrl}/category/orgy"                 to "orgy",
-        "${mainUrl}/category/outdoor"              to "Outdoor",
-//        "${mainUrl}/category/pickup"               to "pickup",
-        "${mainUrl}/category/pov"                  to "Pov",
-        "${mainUrl}/category/public"               to "Public",
-//        "${mainUrl}/category/pussy-licking"        to "pussy licking",
-        "${mainUrl}/category/redhead"              to "Redhead",
-        "${mainUrl}/category/russian"              to "Russian",
-//        "${mainUrl}/category/porn-massage"         to "sex massage",
-//        "${mainUrl}/category/sex-parties"          to "sex party",
-        "${mainUrl}/category/shaved-pussy"         to "Shaved Pussy",
-//        "${mainUrl}/category/shemale"              to "shemale",
-        "${mainUrl}/category/small-tits"           to "Small Tits",
-//        "${mainUrl}/category/squeezing-tits"       to "squeezing tits",
-//        "${mainUrl}/category/squirt"               to "squirt",
-        "${mainUrl}/category/stockings"            to "Stockings",
-        "${mainUrl}/category/tattooed"             to "Tattooed",
-        "${mainUrl}/category/teen-porn"            to "Teen porn",
-//        "${mainUrl}/category/threesome"            to "threesome",
-//        "${mainUrl}/category/undressing"           to "undressing",
-        "${mainUrl}/category/uniforms"             to "Uniforms",
-//        "${mainUrl}/category/vibrator"             to "vibrator",
-//        "${mainUrl}/category/vintage"              to "vintage",
+        "${mainUrl}/category/lesbian"      to "Lesbian",
+        "${mainUrl}/category/mature"       to "Mature",
+        "${mainUrl}/category/milf"         to "Milf",
+        "${mainUrl}/category/old-and-young"to "Old and Young",
+        "${mainUrl}/category/outdoor"      to "Outdoor",
+        "${mainUrl}/category/pov"          to "Pov",
+        "${mainUrl}/category/public"       to "Public",
+        "${mainUrl}/category/redhead"      to "Redhead",
+        "${mainUrl}/category/russian"      to "Russian",
+        "${mainUrl}/category/shaved-pussy" to "Shaved Pussy",
+        "${mainUrl}/category/small-tits"   to "Small Tits",
+        "${mainUrl}/category/stockings"    to "Stockings",
+        "${mainUrl}/category/tattooed"     to "Tattooed",
+        "${mainUrl}/category/teen-porn"    to "Teen porn",
+        "${mainUrl}/category/uniforms"     to "Uniforms",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("${request.data}/$page", referer = "$mainUrl/").document
-        val home     = document.select("div.row section.box.feature:has(span.icon)").mapNotNull { it.toMainPageResult() }
+        // Appends /2, /3, etc., for HQPorner's pagination
+        val url = if (page == 1) request.data else "${request.data}/$page"
+        val document = app.get(url, referer = "$mainUrl/").document
+        
+        // Catches both HQPorner's 'a.image.featured' and their 'section.box' grids
+        val home = document.select("a.image.featured, a.image, section.box.feature, .box, .item").mapNotNull { it.toSearchResult() }
 
-        return newHomePageResponse(HomePageList(request.name, home, true))
+        return newHomePageResponse(
+            list    = HomePageList(
+                name               = request.name,
+                list               = home,
+                isHorizontalImages = true
+            ),
+            hasNext = home.isNotEmpty()
+        )
     }
 
-    private fun Element.toMainPageResult(): SearchResponse? {
-        val ftitle  = this.selectFirst("img")?.attr("alt") ?: return null
-        val title     = ftitle.replaceFirstChar { it.uppercase() }
-        val href      = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
-        val src       = this.selectFirst("img")?.attr("src") ?: return null
-        val posterUrl = if (src.startsWith("//")) "https:$src" else src
+    private fun Element.toSearchResult(): SearchResponse? {
+        val linkElement = if (this.tagName() == "a") this else this.selectFirst("a")
+        if (linkElement == null) return null
+        
+        val href = fixUrlNull(linkElement.attr("href")) ?: return null
+        
+        // Hunts for the title in the alt tag, or falls back to text
+        val title = this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() } 
+            ?: linkElement.attr("title").takeIf { it.isNotBlank() } 
+            ?: linkElement.text().trim()
+            
+        if (title.isEmpty()) return null
+        
+        // Grabs the thumbnail and ensures it has https:
+        val src = this.selectFirst("img")?.attr("src")
+        val posterUrl = fixUrlNull(if (src?.startsWith("//") == true) "https:$src" else src)
 
-        return newMovieSearchResponse(title, "${href}kraptor$posterUrl", TvType.NSFW) {
+        return newMovieSearchResponse(title, href, TvType.NSFW) {
             this.posterUrl = posterUrl
             this.posterHeaders = mapOf("Referer" to "$mainUrl/")
         }
     }
 
-    override suspend fun search(query: String, page: Int): SearchResponseList {
-        val document = app.get("${mainUrl}/?q=${query}&p=$page", referer = "${mainUrl}/").document
+    override suspend fun search(query: String): List<SearchResponse> {
+        val searchResponse = mutableListOf<SearchResponse>()
+        val safeQuery = query.replace(" ", "+")
 
-        val aramaCevap = document.select("div.row section.box.feature:has(span.icon)").mapNotNull { it.toMainPageResult() }
-        return newSearchResponseList(aramaCevap, hasNext = true)
+        for (i in 1..5) {
+            // HQporner uses ?q=search&p=1 for their search engine
+            val url = "${mainUrl}/?q=${safeQuery}&p=$i"
+            
+            try {
+                val document = app.get(url, referer = "$mainUrl/").document
+                val results = document.select("a.image.featured, a.image, section.box.feature").mapNotNull { it.toSearchResult() }
+
+                if (results.isEmpty()) break
+                searchResponse.addAll(results.filter { res -> searchResponse.none { it.url == res.url } })
+            } catch (e: Exception) {
+                break
+            }
+        }
+        return searchResponse
     }
 
-    override suspend fun quickSearch(query: String): List<SearchResponse>? = search(query)
+    override suspend fun load(url: String): LoadResponse {
+        val document = app.get(url, referer = "$mainUrl/").document
 
-    override suspend fun load(url: String): LoadResponse? {
-        val split = url.split("kraptor")
-        Log.d("kraptor_$name", "split = $split")
-        val currentUrl = split[0].trim()
-        val poster = split[1].trim()
-        val document = app.get(currentUrl, referer = "$mainUrl/").document
+        val title = document.selectFirst("h1")?.text()?.trim() 
+            ?: document.selectFirst("title")?.text()?.trim() 
+            ?: "Video"
+            
+        val description = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
+        
+        // We pull the high-quality poster straight from the flvv player! No kraptor hack needed!
+        val rawPoster = document.selectFirst("video#flvv")?.attr("poster") ?: document.selectFirst("meta[property='og:image']")?.attr("content")
+        val poster = fixUrlNull(if (rawPoster?.startsWith("//") == true) "https:$rawPoster" else rawPoster)
 
-        val title           = document.selectFirst("h1")?.text()?.trim() ?: return null
-        val description     = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
-        val year            = document.selectFirst("div.extra span.C a")?.text()?.trim()?.toIntOrNull()
-        val tags            = document.select("section h3 + p a").map { it.text() }
-        val score           = document.selectFirst("span.dt_rating_vgs")?.text()?.trim()
-        val duration        = document.selectFirst("li.icon.fa-clock-o")
-            ?.text()
-            ?.let { text ->
-                val parts = text.split(" ")
-                var totalMinutes = 0
-                parts.forEach { part ->
-                    when {
-                        part.endsWith("h") -> totalMinutes += part.removeSuffix("h").toIntOrNull()?.times(60) ?: 0
-                        part.endsWith("m") -> totalMinutes += part.removeSuffix("m").toIntOrNull() ?: 0
-                    }
+        // Your custom scrapers for tags, duration, and actors!
+        val tags = document.select("section h3 + p a, a[href*='/category/']").map { it.text().trim() }.distinct()
+        
+        val duration = document.selectFirst("li.icon.fa-clock-o")?.text()?.let { text ->
+            val parts = text.split(" ")
+            var totalMinutes = 0
+            parts.forEach { part ->
+                when {
+                    part.endsWith("h") -> totalMinutes += part.removeSuffix("h").toIntOrNull()?.times(60) ?: 0
+                    part.endsWith("m") -> totalMinutes += part.removeSuffix("m").toIntOrNull() ?: 0
                 }
-                totalMinutes
             }
+            totalMinutes
+        }
 
-        val recommendations = document.select("div.\\34 u section").mapNotNull { it.toMainPageResult() }
-        val actors          = document.select("li.icon.fa-star-o a").map { Actor(it.text()) }
+        val actorsList = document.select("li.icon.fa-star-o a, a[href*='/pornstar/']").mapNotNull { elem ->
+            val name = elem.text().trim()
+            if (name.isNotBlank()) ActorData(Actor(name)) else null
+        }
 
-        return newMovieLoadResponse(title, currentUrl, TvType.NSFW, currentUrl) {
-            this.posterUrl       = poster
-            this.posterHeaders   = mapOf(
-                "Referer" to "$mainUrl/",
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-            this.plot            = description
-            this.year            = year
-            this.tags            = tags
-            this.score           = Score.from10(score)
-            this.duration        = duration
+        val recommendations = document.select("a.image.featured, section.box, .video").mapNotNull { elem ->
+            val link = if (elem.tagName() == "a") elem else elem.selectFirst("a")
+            if (link == null) return@mapNotNull null
+            
+            val recHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+            if (recHref == url) return@mapNotNull null
+
+            val recTitle = elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() } ?: link.text().trim()
+            val recSrc = elem.selectFirst("img")?.attr("src")
+            val recPoster = fixUrlNull(if (recSrc?.startsWith("//") == true) "https:$recSrc" else recSrc)
+            
+            newMovieSearchResponse(recTitle, recHref, TvType.NSFW) {
+                this.posterUrl = recPoster
+            }
+        }
+
+        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+            this.posterUrl = poster
+            this.posterHeaders = mapOf("Referer" to "$mainUrl/")
+            this.plot = description
+            this.tags = tags
+            this.duration = duration
+            this.actors = actorsList
             this.recommendations = recommendations
-            addActors(actors)
         }
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        Log.d("kraptor_$name", "data = ${data}")
-        val document = app.get(data, referer = "${data}/", headers = mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language" to "en-US,en;q=0.5",
-            "Referer" to "${mainUrl}/",
-        )).document
-
-        val iframe =  fixUrlNull(document.selectFirst("iframe[src*=mydaddy]")?.attr("src")) ?: ""
-
-//        Log.d("kraptor_$name", "iframe = ${iframe}")
-
-        loadExtractor(iframe, "${mainUrl}/", subtitleCallback, callback)
+        val document = app.get(data, referer = "$mainUrl/").document
+        
+        // This targets the exact <video id="flvv"> sources you found in the HTML!
+        val sources = document.select("video#flvv source")
+        var foundLinks = false
+        
+        for (source in sources) {
+            val src = source.attr("src")
+            // HQporner uses 'title' (like title="1080p Full HD")
+            val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: ""
+            
+            if (src.isNotBlank()) {
+                foundLinks = true
+                val quality = when {
+                    label.contains("2160") || label.contains("4k", ignoreCase = true) -> Qualities.P2160.value
+                    label.contains("1080") -> Qualities.P1080.value
+                    label.contains("720") -> Qualities.P720.value
+                    label.contains("480") -> Qualities.P480.value
+                    label.contains("360") -> Qualities.P360.value
+                    else -> Qualities.Unknown.value
+                }
+                
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} $label".trim(),
+                        url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = mainUrl
+                        this.headers = mapOf("Referer" to data, "Origin" to mainUrl)
+                        this.quality = quality
+                    }
+                )
+            }
+        }
+        
+        // Standard iframe fallback, just in case they embed a video
+        if (!foundLinks) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (!iframeUrl.isNullOrEmpty()) {
+                loadExtractor(fixUrl(if (iframeUrl.startsWith("//")) "https:$iframeUrl" else iframeUrl), data, subtitleCallback, callback)
+            }
+        }
 
         return true
     }
