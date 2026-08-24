@@ -14,7 +14,6 @@ class Hqporner : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // Your brilliant category shelf mapping!
     override val mainPage = mainPageOf(
         "${mainUrl}/top"                   to "All time best porn",
         "${mainUrl}/top/month"             to "Month top porn",
@@ -45,7 +44,7 @@ class Hqporner : MainAPI() {
         "${mainUrl}/category/lesbian"      to "Lesbian",
         "${mainUrl}/category/mature"       to "Mature",
         "${mainUrl}/category/milf"         to "Milf",
-        "${mainUrl}/category/old-and-young"to "Old and Young",
+        "${mainUrl}/category/old-and-young" to "Old and Young",
         "${mainUrl}/category/outdoor"      to "Outdoor",
         "${mainUrl}/category/pov"          to "Pov",
         "${mainUrl}/category/public"       to "Public",
@@ -60,11 +59,9 @@ class Hqporner : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Appends /2, /3, etc., for HQPorner's pagination
         val url = if (page == 1) request.data else "${request.data}/$page"
         val document = app.get(url, referer = "$mainUrl/").document
         
-        // Catches both HQPorner's 'a.image.featured' and their 'section.box' grids
         val home = document.select("a.image.featured, a.image, section.box.feature, .box, .item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -83,14 +80,12 @@ class Hqporner : MainAPI() {
         
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Hunts for the title in the alt tag, or falls back to text
         val title = this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() } 
             ?: linkElement.attr("title").takeIf { it.isNotBlank() } 
             ?: linkElement.text().trim()
             
         if (title.isEmpty()) return null
         
-        // Grabs the thumbnail and ensures it has https:
         val src = this.selectFirst("img")?.attr("src")
         val posterUrl = fixUrlNull(if (src?.startsWith("//") == true) "https:$src" else src)
 
@@ -105,7 +100,6 @@ class Hqporner : MainAPI() {
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..5) {
-            // HQporner uses ?q=search&p=1 for their search engine
             val url = "${mainUrl}/?q=${safeQuery}&p=$i"
             
             try {
@@ -130,11 +124,9 @@ class Hqporner : MainAPI() {
             
         val description = document.selectFirst("meta[name=description]")?.attr("content")?.trim()
         
-        // We pull the high-quality poster straight from the flvv player! No kraptor hack needed!
         val rawPoster = document.selectFirst("video#flvv")?.attr("poster") ?: document.selectFirst("meta[property='og:image']")?.attr("content")
         val poster = fixUrlNull(if (rawPoster?.startsWith("//") == true) "https:$rawPoster" else rawPoster)
 
-        // Your custom scrapers for tags, duration, and actors!
         val tags = document.select("section h3 + p a, a[href*='/category/']").map { it.text().trim() }.distinct()
         
         val duration = document.selectFirst("li.icon.fa-clock-o")?.text()?.let { text ->
@@ -184,13 +176,11 @@ class Hqporner : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, referer = "$mainUrl/").document
         
-        // This targets the exact <video id="flvv"> sources you found in the HTML!
         val sources = document.select("video#flvv source")
         var foundLinks = false
         
         for (source in sources) {
             val src = source.attr("src")
-            // HQporner uses 'title' (like title="1080p Full HD")
             val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: ""
             
             if (src.isNotBlank()) {
@@ -219,7 +209,6 @@ class Hqporner : MainAPI() {
             }
         }
         
-        // Standard iframe fallback, just in case they embed a video
         if (!foundLinks) {
             val iframeUrl = document.selectFirst("iframe")?.attr("src")
             if (!iframeUrl.isNullOrEmpty()) {
