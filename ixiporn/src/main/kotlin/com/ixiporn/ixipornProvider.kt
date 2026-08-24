@@ -11,5 +11,6 @@ class ixipornProvider: Plugin() {
         registerMainAPI(Ebony8())
         registerMainAPI(Brazzpw())
         registerMainAPI(Fullhd())
+        registerMainAPI(Hqporner())
     }
 }
