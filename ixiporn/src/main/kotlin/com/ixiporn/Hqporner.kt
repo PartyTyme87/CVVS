@@ -176,28 +176,14 @@ class Hqporner : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, referer = "$mainUrl/").document
         
-        // Step 1: Look for any iframe on the page!
-        val iframeSrc = document.selectFirst("iframe")?.attr("src")
-        
-        var innerDoc = document
-        var iframeUrl = data
-
-        // Step 2: If we found an iframe, fetch the HTML inside it!
-        if (!iframeSrc.isNullOrEmpty()) {
-            iframeUrl = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
-            innerDoc = app.get(iframeUrl, referer = data).document
-        }
-        
-        // Step 3: Now look for the video source inside the iframe HTML
-        val sources = innerDoc.select("video#flvv source, video source")
-        var foundLinks = false
+        // FIXED: Ad iframe hijack avoided! Hunts directly for mp4 sources on the main page.
+        val sources = document.select("source[src*=.mp4]")
         
         for (source in sources) {
             val src = source.attr("src")
-            val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: ""
+            val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: "Video"
             
             if (src.isNotBlank()) {
-                foundLinks = true
                 val quality = when {
                     label.contains("2160") || label.contains("4k", ignoreCase = true) -> Qualities.P2160.value
                     label.contains("1080") -> Qualities.P1080.value
@@ -207,25 +193,20 @@ class Hqporner : MainAPI() {
                     else -> Qualities.Unknown.value
                 }
                 
+                val videoUrl = fixUrl(if (src.startsWith("//")) "https:$src" else src)
+                
                 callback.invoke(
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} $label".trim(),
-                        url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
+                        url = videoUrl,
                         type = INFER_TYPE
                     ) {
+                        // FIXED: BigCDN rejects the 'Origin' header. Only sending the referer now!
                         this.referer = mainUrl
-                        // BigCDN (their video host) expects the iframe URL as the referer!
-                        this.headers = mapOf("Referer" to iframeUrl, "Origin" to mainUrl)
-                        this.quality = quality
                     }
                 )
             }
-        }
-        
-        // Fallback: Just in case they use a 3rd party host that Cloudstream natively supports
-        if (!foundLinks && !iframeSrc.isNullOrEmpty()) {
-            loadExtractor(iframeUrl, data, subtitleCallback, callback)
         }
 
         return true
