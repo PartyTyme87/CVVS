@@ -176,7 +176,20 @@ class Hqporner : MainAPI() {
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, referer = "$mainUrl/").document
         
-        val sources = document.select("video#flvv source")
+        // Step 1: Look for any iframe on the page!
+        val iframeSrc = document.selectFirst("iframe")?.attr("src")
+        
+        var innerDoc = document
+        var iframeUrl = data
+
+        // Step 2: If we found an iframe, fetch the HTML inside it!
+        if (!iframeSrc.isNullOrEmpty()) {
+            iframeUrl = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
+            innerDoc = app.get(iframeUrl, referer = data).document
+        }
+        
+        // Step 3: Now look for the video source inside the iframe HTML
+        val sources = innerDoc.select("video#flvv source, video source")
         var foundLinks = false
         
         for (source in sources) {
@@ -202,18 +215,17 @@ class Hqporner : MainAPI() {
                         type = INFER_TYPE
                     ) {
                         this.referer = mainUrl
-                        this.headers = mapOf("Referer" to data, "Origin" to mainUrl)
+                        // BigCDN (their video host) expects the iframe URL as the referer!
+                        this.headers = mapOf("Referer" to iframeUrl, "Origin" to mainUrl)
                         this.quality = quality
                     }
                 )
             }
         }
         
-        if (!foundLinks) {
-            val iframeUrl = document.selectFirst("iframe")?.attr("src")
-            if (!iframeUrl.isNullOrEmpty()) {
-                loadExtractor(fixUrl(if (iframeUrl.startsWith("//")) "https:$iframeUrl" else iframeUrl), data, subtitleCallback, callback)
-            }
+        // Fallback: Just in case they use a 3rd party host that Cloudstream natively supports
+        if (!foundLinks && !iframeSrc.isNullOrEmpty()) {
+            loadExtractor(iframeUrl, data, subtitleCallback, callback)
         }
 
         return true
