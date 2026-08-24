@@ -173,39 +173,87 @@ class Hqporner : MainAPI() {
         }
     }
 
+    private fun getQuality(text: String): Int {
+        return when {
+            text.contains("2160") || text.contains("4k", ignoreCase = true) -> Qualities.P2160.value
+            text.contains("1080") -> Qualities.P1080.value
+            text.contains("720") -> Qualities.P720.value
+            text.contains("480") -> Qualities.P480.value
+            text.contains("360") -> Qualities.P360.value
+            else -> Qualities.Unknown.value
+        }
+    }
+
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val document = app.get(data, referer = "$mainUrl/").document
+        var foundLinks = false
+        val sourceName = this.name
         
-        // FIXED: Ad iframe hijack avoided! Hunts directly for mp4 sources on the main page.
-        val sources = document.select("source[src*=.mp4]")
-        
-        for (source in sources) {
-            val src = source.attr("src")
-            val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: "Video"
-            
-            if (src.isNotBlank()) {
-                val quality = when {
-                    label.contains("2160") || label.contains("4k", ignoreCase = true) -> Qualities.P2160.value
-                    label.contains("1080") -> Qualities.P1080.value
-                    label.contains("720") -> Qualities.P720.value
-                    label.contains("480") -> Qualities.P480.value
-                    label.contains("360") -> Qualities.P360.value
-                    else -> Qualities.Unknown.value
+        // This helper function scrapes the sources, and has a JS fallback built right in!
+        fun processSources(doc: org.jsoup.nodes.Document, referer: String) {
+            val sources = doc.select("source")
+            for (source in sources) {
+                val src = source.attr("src")
+                val label = source.attr("title").takeIf { it.isNotBlank() } ?: source.attr("label") ?: "Video"
+                
+                if (src.contains(".mp4") || src.contains(".m3u8")) {
+                    foundLinks = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = sourceName,
+                            name = "$sourceName $label".trim(),
+                            url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
+                            type = INFER_TYPE,
+                            headers = mapOf("Referer" to referer),
+                            quality = getQuality(label)
+                        )
+                    )
                 }
+            }
+            
+            // If they hid the video in javascript, this Regex rips it out
+            if (!foundLinks) {
+                val html = doc.html()
+                val mp4Regex = Regex("""["']([^"']+\.mp4)["']""")
+                mp4Regex.findAll(html).forEach { match ->
+                    val src = match.groupValues[1]
+                    foundLinks = true
+                    callback.invoke(
+                        newExtractorLink(
+                            source = sourceName,
+                            name = sourceName,
+                            url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
+                            type = INFER_TYPE,
+                            headers = mapOf("Referer" to referer),
+                            quality = getQuality(src)
+                        )
+                    )
+                }
+            }
+        }
+        
+        // 1. Try checking the main page directly
+        processSources(document, mainUrl)
+        
+        // 2. If it's not there, hunt for the real video iframe and skip the ads
+        if (!foundLinks) {
+            val iframes = document.select("iframe").mapNotNull { it.attr("src") }
+            for (iframeSrc in iframes) {
+                // FIXED: Specifically ignores the hf.html ad banner you found!
+                if (iframeSrc.contains("hf.html") || iframeSrc.contains("ad.") || iframeSrc.contains("realsrv")) continue
                 
-                val videoUrl = fixUrl(if (src.startsWith("//")) "https:$src" else src)
+                val iframeUrl = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
                 
-                callback.invoke(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} $label".trim(),
-                        url = videoUrl,
-                        type = INFER_TYPE
-                    ) {
-                        // FIXED: BigCDN rejects the 'Origin' header. Only sending the referer now!
-                        this.referer = mainUrl
+                try {
+                    val innerDoc = app.get(iframeUrl, referer = data).document
+                    processSources(innerDoc, iframeUrl)
+                    
+                    if (!foundLinks) {
+                        loadExtractor(iframeUrl, data, subtitleCallback, callback)
                     }
-                )
+                } catch (e: Exception) {
+                    // Ignore dead iframes
+                }
             }
         }
 
