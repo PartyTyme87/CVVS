@@ -201,16 +201,17 @@ class Freemovies : MainAPI() {
                             val iframeHtml = app.get(fixedUrl, referer = mainUrl).text
                             val m3u8Regex = Regex("""(https?://[^"']+\.m3u8[^"']*)""")
                             m3u8Regex.findAll(iframeHtml).forEach { match ->
-                                // FIXED: Uses the proper function arguments instead of the lambda builder
+                                // FIXED: Using the perfect builder syntax
                                 callback.invoke(
                                     newExtractorLink(
                                         source = name,
                                         name = "$name HD",
                                         url = match.groupValues[1],
-                                        referer = fixedUrl,
-                                        quality = Qualities.Unknown.value,
-                                        isM3u8 = true
-                                    )
+                                        type = INFER_TYPE
+                                    ) {
+                                        this.referer = fixedUrl
+                                        this.quality = Qualities.Unknown.value
+                                    }
                                 )
                                 foundLinks = true
                             }
