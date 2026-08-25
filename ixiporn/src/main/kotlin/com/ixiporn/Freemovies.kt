@@ -124,13 +124,11 @@ class Freemovies : MainAPI() {
                 val epText = epNode.text().trim()
                 val onclickAttr = epNode.attr("onclick")
                 
-                // Extracts the exact season and episode number from the infoEpisodio(id, season, episode) function
                 val onclickMatch = Regex("""infoEpisodio\(\d+,\s*(\d+),\s*(\d+)\)""").find(onclickAttr)
                 
                 val seasonNum = onclickMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
                 val epNum = onclickMatch?.groupValues?.get(2)?.toIntOrNull() ?: Regex("""(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull()
                 
-                // Bypasses the javascript:void(0) link and builds a clean internal URL
                 val epHref = "$url?season=$seasonNum&episode=$epNum"
 
                 episodes.add(
@@ -167,7 +165,6 @@ class Freemovies : MainAPI() {
         val document = app.get(cleanUrl, referer = "$mainUrl/").document
         var foundLinks = false
         
-        // Catches both servers-js-extra (Movies) and episodes-js-extra (TV Shows)
         val base64Script = document.selectFirst("script[id$=-js-extra]")?.attr("src")
         
         if (base64Script != null && base64Script.contains("base64,")) {
@@ -176,7 +173,6 @@ class Freemovies : MainAPI() {
             try {
                 val decodedString = String(android.util.Base64.decode(encodedData, android.util.Base64.DEFAULT)).replace("\\/", "/")
                 
-                // Catches either imdb_id or tvimdbid
                 val imdbId = Regex(""""(?:imdb_id|tvimdbid)"\s*:\s*"([^"]+)"""").find(decodedString)?.groupValues?.get(1)
                 
                 if (imdbId != null && imdbId.startsWith("tt")) {
@@ -205,15 +201,18 @@ class Freemovies : MainAPI() {
                             val iframeHtml = app.get(fixedUrl, referer = mainUrl).text
                             val m3u8Regex = Regex("""(https?://[^"']+\.m3u8[^"']*)""")
                             m3u8Regex.findAll(iframeHtml).forEach { match ->
+                                // FIXED: Replaced the deprecated ExtractorLink constructor with newExtractorLink
                                 callback.invoke(
-                                    ExtractorLink(
-                                        name,
-                                        "$name HD",
-                                        match.groupValues[1],
-                                        fixedUrl,
-                                        Qualities.Unknown.value,
-                                        true
-                                    )
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$name HD",
+                                        url = match.groupValues[1],
+                                        type = INFER_TYPE
+                                    ) {
+                                        this.referer = fixedUrl
+                                        this.quality = Qualities.Unknown.value
+                                        this.isM3u8 = true
+                                    }
                                 )
                                 foundLinks = true
                             }
