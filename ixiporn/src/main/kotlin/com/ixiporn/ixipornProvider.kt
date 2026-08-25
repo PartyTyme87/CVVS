@@ -12,5 +12,6 @@ class ixipornProvider: Plugin() {
         registerMainAPI(Brazzpw())
         registerMainAPI(Fullhd())
         registerMainAPI(Siska())
+        registerMainAPI(Pornxp())
     }
 }
