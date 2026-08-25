@@ -49,7 +49,10 @@ class Freemovies : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        val isTvSeries = this.selectFirst(".meta .type")?.text()?.contains("SS", ignoreCase = true) == true
+        val textContent = this.text()
+        val isTvSeries = textContent.contains("SS ", ignoreCase = true) || 
+                         textContent.contains("EP ", ignoreCase = true) || 
+                         textContent.contains("Season", ignoreCase = true)
 
         return if (isTvSeries) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -110,28 +113,33 @@ class Freemovies : MainAPI() {
             }
         }
 
-        // FIXED: Dynamically detects if it is a TV show based on the presence of episode lists
-        val isTvSeries = document.select("ul.episodes").size > 1 || document.select("ul.episodes li").size > 1
+        val episodesList = document.select("ul.episodes li a")
+        val firstEpText = episodesList.firstOrNull()?.text()?.trim() ?: ""
+        val isTvSeries = episodesList.size > 1 || (!firstEpText.contains("Movie", ignoreCase = true) && firstEpText.isNotBlank())
 
         if (isTvSeries) {
             val episodes = mutableListOf<Episode>()
-            document.select("ul.episodes").forEach { seasonUl ->
-                val seasonNum = seasonUl.attr("data-season").toIntOrNull()
-                seasonUl.select("li a").forEach { epNode ->
-                    val epText = epNode.text().trim()
-                    // Fallback to the main URL if the episode href is just a '#' placeholder
-                    val epHref = fixUrlNull(epNode.attr("href"))?.takeIf { it != "#" } ?: url
-                    
-                    val epNum = Regex("""(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull()
+            
+            episodesList.forEach { epNode ->
+                val epText = epNode.text().trim()
+                val onclickAttr = epNode.attr("onclick")
+                
+                // Extracts the exact season and episode number from the infoEpisodio(id, season, episode) function
+                val onclickMatch = Regex("""infoEpisodio\(\d+,\s*(\d+),\s*(\d+)\)""").find(onclickAttr)
+                
+                val seasonNum = onclickMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                val epNum = onclickMatch?.groupValues?.get(2)?.toIntOrNull() ?: Regex("""(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull()
+                
+                // Bypasses the javascript:void(0) link and builds a clean internal URL
+                val epHref = "$url?season=$seasonNum&episode=$epNum"
 
-                    episodes.add(
-                        newEpisode(epHref) {
-                            this.name = epText
-                            this.season = seasonNum
-                            this.episode = epNum
-                        }
-                    )
-                }
+                episodes.add(
+                    newEpisode(epHref) {
+                        this.name = epText
+                        this.season = seasonNum
+                        this.episode = epNum
+                    }
+                )
             }
             
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
@@ -155,26 +163,61 @@ class Freemovies : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val document = app.get(data, referer = "$mainUrl/").document
+        val cleanUrl = data.substringBefore("?")
+        val document = app.get(cleanUrl, referer = "$mainUrl/").document
         var foundLinks = false
         
-        val base64Script = document.selectFirst("script#servers-js-extra")?.attr("src")
+        // Catches both servers-js-extra (Movies) and episodes-js-extra (TV Shows)
+        val base64Script = document.selectFirst("script[id$=-js-extra]")?.attr("src")
         
         if (base64Script != null && base64Script.contains("base64,")) {
             val encodedData = base64Script.substringAfter("base64,").trim()
             
             try {
-                // FIXED: Replaces the JSON escape slashes (\/) with regular forward slashes (/)
                 val decodedString = String(android.util.Base64.decode(encodedData, android.util.Base64.DEFAULT)).replace("\\/", "/")
                 
+                // Catches either imdb_id or tvimdbid
+                val imdbId = Regex(""""(?:imdb_id|tvimdbid)"\s*:\s*"([^"]+)"""").find(decodedString)?.groupValues?.get(1)
+                
+                if (imdbId != null && imdbId.startsWith("tt")) {
+                    val seasonRegex = Regex("""season=(\d+)""").find(data)?.groupValues?.get(1)
+                    val episodeRegex = Regex("""episode=(\d+)""").find(data)?.groupValues?.get(1)
+                    
+                    val vidsrcUrl = if (seasonRegex != null && episodeRegex != null) {
+                        "https://vidsrc.me/embed/tv?imdb=$imdbId&season=$seasonRegex&episode=$episodeRegex"
+                    } else {
+                        "https://vidsrc.me/embed/movie?imdb=$imdbId"
+                    }
+                    
+                    loadExtractor(vidsrcUrl, data, subtitleCallback, callback)
+                    foundLinks = true
+                }
+
                 val serverRegex = Regex(""""(?:premium|embedru|superembed|vidsrc|server\d*)"\s*:\s*"([^"]+)"""")
                 val serverUrls = serverRegex.findAll(decodedString).map { it.groupValues[1] }.toList()
                 
                 for (serverUrl in serverUrls) {
-                    if (serverUrl.isNotBlank()) {
+                    if (serverUrl.isNotBlank() && !serverUrl.contains("vidsrc.me")) {
                         val fixedUrl = fixUrl(if (serverUrl.startsWith("//")) "https:$serverUrl" else serverUrl)
                         loadExtractor(fixedUrl, data, subtitleCallback, callback)
-                        foundLinks = true
+                        
+                        try {
+                            val iframeHtml = app.get(fixedUrl, referer = mainUrl).text
+                            val m3u8Regex = Regex("""(https?://[^"']+\.m3u8[^"']*)""")
+                            m3u8Regex.findAll(iframeHtml).forEach { match ->
+                                callback.invoke(
+                                    ExtractorLink(
+                                        name,
+                                        "$name HD",
+                                        match.groupValues[1],
+                                        fixedUrl,
+                                        Qualities.Unknown.value,
+                                        true
+                                    )
+                                )
+                                foundLinks = true
+                            }
+                        } catch (e: Exception) {}
                     }
                 }
             } catch (e: Exception) {
@@ -182,7 +225,6 @@ class Freemovies : MainAPI() {
             }
         }
 
-        // FALLBACK: If the base64 decoder fails, grabs the iframe source directly from the player
         if (!foundLinks) {
             val iframeSrc = document.selectFirst("iframe#iframe")?.let { 
                 it.attr("data-src").takeIf { src -> src.isNotBlank() && src != "about:blank" } ?: it.attr("src") 
