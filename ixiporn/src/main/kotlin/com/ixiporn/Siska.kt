@@ -16,7 +16,10 @@ class Siska : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/best_xvideos.php" to "Best Videos",
-        "${mainUrl}/"                 to "Home"
+        "${mainUrl}/"                 to "Home",
+        "${mainUrl}/chanells.php?site=SheWillCheat.com" to "She Will Cheat",
+        "${mainUrl}/chanells.php?site=SexMex.xxx" to "SexMex",
+        "${mainUrl}/chanells.php?site=JulesJordan.com" to "Jules Jordan"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
