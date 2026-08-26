@@ -17,15 +17,12 @@ class Paradisehill : MainAPI() {
     override val mainPage = mainPageOf(
         "${mainUrl}/all/?sort=created_at" to "All Films",
         "${mainUrl}/popular/?filter=all&sort=by_likes" to "Popular",
-        "${mainUrl}/category/pov/?sort=created_at" to "POV",
-        "${mainUrl}/category/big-tits/?sort=created_at" to "Big Tits",
+        "${mainUrl}/category/blacks-women/?sort=created_at" to "Ebony",
+        "${mainUrl}/category/asians/?sort=created_at" to "Asian",
+        "${mainUrl}/category/latina/?sort=created_at" to "Latina",
         "${mainUrl}/category/big-butts/?sort=created_at" to "Big Ass",
-        "${mainUrl}/category/anal-sex/?sort=created_at" to "Anal Sex",
-        "${mainUrl}/category/lesbians/?sort=created_at" to "Lesbians",
-        "${mainUrl}/studio/89/?sort=created_at" to "Brazzers",
-        "${mainUrl}/studio/696/?sort=created_at" to "Blacked",
-        "${mainUrl}/studio/607/?sort=created_at" to "Tushy",
-        "${mainUrl}/studio/16/?sort=created_at" to "Evil Angel"
+        "${mainUrl}/categories/" to "Categories",
+        "${mainUrl}/studios/?sort=by_likes" to "Studios"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -36,8 +33,7 @@ class Paradisehill : MainAPI() {
         }
         
         val document = app.get(url, referer = "$mainUrl/").document
-        
-        val home = document.select(".item.list-film-item").mapNotNull { it.toSearchResult() }
+        val home = document.select(".item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -53,8 +49,6 @@ class Paradisehill : MainAPI() {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        if (href.contains("/category/") || href.contains("/studio/")) return null
-        
         val title = this.selectFirst("span[itemprop='name']")?.text()?.trim() 
             ?: this.selectFirst("div[itemprop='name'] span")?.text()?.trim()
             ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
@@ -66,8 +60,16 @@ class Paradisehill : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        return newMovieSearchResponse(title, href, TvType.NSFW) {
-            this.posterUrl = posterUrl
+        val isFolder = href.contains("/category/") || href.contains("/categories/") || href.contains("/studio/") || href.contains("/studios/")
+
+        return if (isFolder) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+            }
+        } else {
+            newMovieSearchResponse(title, href, TvType.NSFW) {
+                this.posterUrl = posterUrl
+            }
         }
     }
 
@@ -108,6 +110,36 @@ class Paradisehill : MainAPI() {
         }
 
         val recommendations = document.select("div#home .item.list-film-item").mapNotNull { it.toSearchResult() }
+
+        val isFolderLink = url.contains("/category/") || url.contains("/studio/")
+        if (isFolderLink) {
+            // FIXED: Cleanly converts grid items into episodes so Cloudstream can display them
+            val episodes = document.select(".item.list-film-item").mapNotNull { elem ->
+                val link = elem.selectFirst("a") ?: return@mapNotNull null
+                val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                
+                val epTitle = elem.selectFirst("span[itemprop='name']")?.text()?.trim() 
+                    ?: elem.selectFirst("div[itemprop='name'] span")?.text()?.trim()
+                    ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                    ?: "Video"
+                    
+                val epImg = elem.selectFirst("img")
+                val epPoster = fixUrlNull(
+                    epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                    ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
+                )
+                
+                newEpisode(epHref) {
+                    this.name = epTitle
+                    this.posterUrl = epPoster
+                }
+            }
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = description
+                this.tags = tags
+            }
+        }
 
         val scriptData = document.select("script:containsData(var videoList)").firstOrNull()?.data()
         val videoParts = mutableListOf<String>()
@@ -152,17 +184,18 @@ class Paradisehill : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // FIXED: Strictly uses the new ExtractorLink parameters!
+        // FIXED: Now uses the correct lambda syntax for Cloudstream's newExtractorLink
         if (data.contains(".mp4")) {
             callback.invoke(
                 newExtractorLink(
                     source = name,
                     name = name,
                     url = data,
-                    referer = mainUrl,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = false
-                )
+                    type = INFER_TYPE
+                ) {
+                    this.referer = mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
             return true
         }
@@ -179,10 +212,11 @@ class Paradisehill : MainAPI() {
                         source = name,
                         name = name,
                         url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
-                        referer = mainUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = false
-                    )
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = mainUrl
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 foundLinks = true
             }
