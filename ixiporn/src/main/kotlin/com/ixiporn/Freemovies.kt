@@ -171,7 +171,12 @@ class Freemovies : MainAPI() {
             val encodedData = base64Script.substringAfter("base64,").trim()
             
             try {
-                val decodedString = String(android.util.Base64.decode(encodedData, android.util.Base64.DEFAULT)).replace("\\/", "/")
+                // Failsafe decode: Tries standard Android decoding, falls back to JVM decoding if the device restricts it
+                val decodedString = try {
+                    String(android.util.Base64.decode(encodedData, android.util.Base64.DEFAULT)).replace("\\/", "/")
+                } catch (e: Exception) {
+                    String(java.util.Base64.getDecoder().decode(encodedData)).replace("\\/", "/")
+                }
                 
                 val imdbId = Regex(""""(?:imdb_id|tvimdbid)"\s*:\s*"([^"]+)"""").find(decodedString)?.groupValues?.get(1)
                 
@@ -179,16 +184,31 @@ class Freemovies : MainAPI() {
                     val seasonRegex = Regex("""season=(\d+)""").find(data)?.groupValues?.get(1)
                     val episodeRegex = Regex("""episode=(\d+)""").find(data)?.groupValues?.get(1)
                     
-                    val vidsrcUrl = if (seasonRegex != null && episodeRegex != null) {
-                        "https://vidsrc.me/embed/tv?imdb=$imdbId&season=$seasonRegex&episode=$episodeRegex"
+                    // SMART INJECTION: Generates the top 4 Cloudstream extractors based on the IMDb ID!
+                    val embedUrls = if (seasonRegex != null && episodeRegex != null) {
+                        listOf(
+                            "https://vidsrc.net/embed/tv?imdb=$imdbId&season=$seasonRegex&episode=$episodeRegex",
+                            "https://vidsrc.cc/v2/embed/tv/$imdbId/$seasonRegex/$episodeRegex",
+                            "https://vidlink.pro/tv/$imdbId/$seasonRegex/$episodeRegex",
+                            "https://autoembed.co/tv/imdb/$imdbId-$seasonRegex-$episodeRegex"
+                        )
                     } else {
-                        "https://vidsrc.me/embed/movie?imdb=$imdbId"
+                        listOf(
+                            "https://vidsrc.net/embed/movie?imdb=$imdbId",
+                            "https://vidsrc.cc/v2/embed/movie/$imdbId",
+                            "https://vidlink.pro/movie/$imdbId",
+                            "https://autoembed.co/movie/imdb/$imdbId"
+                        )
                     }
                     
-                    loadExtractor(vidsrcUrl, data, subtitleCallback, callback)
-                    foundLinks = true
+                    // Offloads all the heavy lifting to Cloudstream's native extractors
+                    embedUrls.forEach { 
+                        loadExtractor(it, data, subtitleCallback, callback) 
+                        foundLinks = true
+                    }
                 }
 
+                // Still attempts to load the website's native servers just in case
                 val serverRegex = Regex(""""(?:premium|embedru|superembed|vidsrc|server\d*)"\s*:\s*"([^"]+)"""")
                 val serverUrls = serverRegex.findAll(decodedString).map { it.groupValues[1] }.toList()
                 
@@ -196,26 +216,7 @@ class Freemovies : MainAPI() {
                     if (serverUrl.isNotBlank() && !serverUrl.contains("vidsrc.me")) {
                         val fixedUrl = fixUrl(if (serverUrl.startsWith("//")) "https:$serverUrl" else serverUrl)
                         loadExtractor(fixedUrl, data, subtitleCallback, callback)
-                        
-                        try {
-                            val iframeHtml = app.get(fixedUrl, referer = mainUrl).text
-                            val m3u8Regex = Regex("""(https?://[^"']+\.m3u8[^"']*)""")
-                            m3u8Regex.findAll(iframeHtml).forEach { match ->
-                                // FIXED: Using the perfect builder syntax
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = "$name HD",
-                                        url = match.groupValues[1],
-                                        type = INFER_TYPE
-                                    ) {
-                                        this.referer = fixedUrl
-                                        this.quality = Qualities.Unknown.value
-                                    }
-                                )
-                                foundLinks = true
-                            }
-                        } catch (e: Exception) {}
+                        foundLinks = true
                     }
                 }
             } catch (e: Exception) {
