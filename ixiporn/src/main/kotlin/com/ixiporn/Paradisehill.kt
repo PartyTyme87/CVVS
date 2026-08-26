@@ -14,7 +14,6 @@ class Paradisehill : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // FIXED: Categories and Studios are now mapped directly to the Home Screen to bypass Cloudstream's nesting limits!
     override val mainPage = mainPageOf(
         "${mainUrl}/all/?sort=created_at" to "All Films",
         "${mainUrl}/popular/?filter=all&sort=by_likes" to "Popular",
@@ -38,7 +37,6 @@ class Paradisehill : MainAPI() {
         
         val document = app.get(url, referer = "$mainUrl/").document
         
-        // FIXED: Now exclusively targets actual videos and ignores any stray category folders
         val home = document.select(".item.list-film-item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -55,7 +53,6 @@ class Paradisehill : MainAPI() {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Extra safety net to ensure folders don't sneak into the video shelves
         if (href.contains("/category/") || href.contains("/studio/")) return null
         
         val title = this.selectFirst("span[itemprop='name']")?.text()?.trim() 
@@ -155,6 +152,7 @@ class Paradisehill : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
+        // FIXED: Strictly uses the new ExtractorLink parameters!
         if (data.contains(".mp4")) {
             callback.invoke(
                 newExtractorLink(
