@@ -14,7 +14,6 @@ class Paradisehill : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // Maps out the diverse categories and studios you found in the HTML
     override val mainPage = mainPageOf(
         "${mainUrl}/all/?sort=created_at" to "All Films",
         "${mainUrl}/popular/?filter=all&sort=by_likes" to "Popular",
@@ -26,13 +25,10 @@ class Paradisehill : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // Properly handles pagination with their parameter structure
             if (request.data.contains("?")) "${request.data}&page=$page" else "${request.data}?page=$page"
         }
         
         val document = app.get(url, referer = "$mainUrl/").document
-        
-        // Hunts for both videos (.list-film-item) and standard folders (.item)
         val home = document.select(".item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -49,7 +45,6 @@ class Paradisehill : MainAPI() {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Hunts for the title inside the specific schema tags
         val title = this.selectFirst("span[itemprop='name']")?.text()?.trim() 
             ?: this.selectFirst("div[itemprop='name'] span")?.text()?.trim()
             ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
@@ -61,7 +56,6 @@ class Paradisehill : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        // Determines if this is a Category/Studio folder or an actual video
         val isFolder = href.contains("/category/") || href.contains("/categories/") || href.contains("/studio/") || href.contains("/studios/")
 
         return if (isFolder) {
@@ -80,7 +74,6 @@ class Paradisehill : MainAPI() {
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..5) {
-            // what=1 restricts the search strictly to films
             val url = "${mainUrl}/search/?pattern=$safeQuery&what=1&page=$i"
             
             try {
@@ -99,7 +92,6 @@ class Paradisehill : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, referer = "$mainUrl/").document
 
-        // Parses the structured schema tags for metadata
         val title = document.selectFirst("h1.title-inside")?.text()?.trim() 
             ?: document.selectFirst("title")?.text()?.trim() 
             ?: "Video"
@@ -113,28 +105,44 @@ class Paradisehill : MainAPI() {
             if (name.isNotBlank()) ActorData(Actor(name)) else null
         }
 
-        // Grabs similar films from the recommendations tab
         val recommendations = document.select("div#home .item.list-film-item").mapNotNull { it.toSearchResult() }
 
-        // Category & Studio pagination handler
         val isFolderLink = url.contains("/category/") || url.contains("/studio/")
         if (isFolderLink) {
-            val items = document.select(".item.list-film-item").mapNotNull { it.toSearchResult() }
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, items.filterIsInstance<Episode>()) {
+            // FIXED: Cleanly converts grid items into episodes so Cloudstream can display them
+            val episodes = document.select(".item.list-film-item").mapNotNull { elem ->
+                val link = elem.selectFirst("a") ?: return@mapNotNull null
+                val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                
+                val epTitle = elem.selectFirst("span[itemprop='name']")?.text()?.trim() 
+                    ?: elem.selectFirst("div[itemprop='name'] span")?.text()?.trim()
+                    ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                    ?: "Video"
+                    
+                val epImg = elem.selectFirst("img")
+                val epPoster = fixUrlNull(
+                    epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                    ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
+                )
+                
+                newEpisode(epHref) {
+                    this.name = epTitle
+                    this.posterUrl = epPoster
+                }
+            }
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
             }
         }
 
-        // MAGIC TRICK: Extracts the split video parts from the hidden 'videoList' variable
         val scriptData = document.select("script:containsData(var videoList)").firstOrNull()?.data()
         val videoParts = mutableListOf<String>()
         
         if (scriptData != null) {
             val srcRegex = Regex(""""src":"([^"]+)"""")
             srcRegex.findAll(scriptData).forEach { match ->
-                // Cleans the escaped slashes (e.g. \/video\/) into valid URLs
                 val mp4Link = match.groupValues[1].replace("\\/", "/")
                 if (!videoParts.contains(mp4Link)) {
                     videoParts.add(mp4Link)
@@ -142,7 +150,6 @@ class Paradisehill : MainAPI() {
             }
         }
 
-        // If the video is split into parts, we return it as a TvSeries so Cloudstream plays them in sequence
         if (videoParts.size > 1) {
             val episodes = videoParts.mapIndexed { index, mp4Link ->
                 newEpisode(mp4Link) {
@@ -161,7 +168,6 @@ class Paradisehill : MainAPI() {
             }
         }
 
-        // Standard single-part movie response
         val finalUrl = if (videoParts.isNotEmpty()) videoParts.first() else url
         return newMovieLoadResponse(title, finalUrl, TvType.NSFW, finalUrl) {
             this.posterUrl = poster
@@ -174,22 +180,22 @@ class Paradisehill : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        // If our load function successfully grabbed the direct .mp4 link, pass it straight to the player!
+        // FIXED: Now uses the correct lambda syntax for Cloudstream's newExtractorLink
         if (data.contains(".mp4")) {
             callback.invoke(
                 newExtractorLink(
                     source = name,
                     name = name,
                     url = data,
-                    referer = mainUrl,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = false
-                )
+                    type = INFER_TYPE
+                ) {
+                    this.referer = mainUrl
+                    this.quality = Qualities.Unknown.value
+                }
             )
             return true
         }
         
-        // Fallback: Scrapes the page if we didn't intercept the mp4 early
         val document = app.get(data, referer = "$mainUrl/").document
         var foundLinks = false
         
@@ -202,10 +208,11 @@ class Paradisehill : MainAPI() {
                         source = name,
                         name = name,
                         url = fixUrl(if (src.startsWith("//")) "https:$src" else src),
-                        referer = mainUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = false
-                    )
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = mainUrl
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 foundLinks = true
             }
