@@ -124,35 +124,33 @@ class Sxyland : MainAPI() {
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            // Still allows Cloudstream's universal extractor to attempt a pull
+            // Primary method: Let Cloudstream's universal extractor handle the host
             loadExtractor(fixedIframe, data, subtitleCallback, callback)
+            foundLinks = true
             
-            // ADVANCED SCRAPER: Defeats the JavaScript packer to grab the raw .m3u8 link
+            // Fallback Manual Scraper: Decodes the packed JS and rips the raw video URL
             try {
-                val iframeResponse = app.get(fixedIframe, referer = data).text
-                
-                // Decodes the obfuscated script on the host site
-                val unpackedHtml = JsUnpacker(iframeResponse).unpack() ?: iframeResponse
-                
-                // Cleans JSON escape characters (\/) so the URL remains intact
+                val iframeHtml = app.get(fixedIframe, referer = data).text
+                val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
                 val cleanHtml = unpackedHtml.replace("\\/", "/")
                 
-                // Hunts for the exact m3u8 or mp4 media links inside the decoded HTML
                 val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
                 mediaRegex.findAll(cleanHtml).forEach { match ->
+                    // FIXED: Replaced the deprecated 'isM3u8' parameter with the modern 'type' integer 
                     callback.invoke(
-                        newExtractorLink(
-                            source = "NowPlay",
-                            name = "NowPlay HD",
+                        ExtractorLink(
+                            source = name,
+                            name = "$name HD",
                             url = match.groupValues[1],
                             referer = fixedIframe,
-                            quality = Qualities.Unknown.value
+                            quality = Qualities.Unknown.value,
+                            type = INFER_TYPE
                         )
                     )
                     foundLinks = true
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                // Ignore fallback errors
             }
         }
 
