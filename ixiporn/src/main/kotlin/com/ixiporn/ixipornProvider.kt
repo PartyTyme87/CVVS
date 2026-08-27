@@ -15,5 +15,6 @@ class ixipornProvider: Plugin() {
         registerMainAPI(Pornxp())
         registerMainAPI(Freemovies())
         registerMainAPI(Paradisehill())
+        registerMainAPI(Sxyland())
     }
 }
