@@ -124,11 +124,11 @@ class Sxyland : MainAPI() {
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            // Primary method: Let Cloudstream's universal extractor handle the host
+            // Allows Cloudstream's universal extractor to attempt a pull
             loadExtractor(fixedIframe, data, subtitleCallback, callback)
             foundLinks = true
             
-            // Fallback Manual Scraper: Decodes the packed JS and rips the raw video URL
+            // Manual Scraper: Decodes the packed JS and rips the raw video URL
             try {
                 val iframeHtml = app.get(fixedIframe, referer = data).text
                 val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
@@ -136,15 +136,16 @@ class Sxyland : MainAPI() {
                 
                 val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
                 mediaRegex.findAll(cleanHtml).forEach { match ->
-                    // FIXED: Replaced the deprecated 'isM3u8' parameter with the modern 'type' integer 
+                    val isM3u8File = match.groupValues[1].contains(".m3u8")
+                    // FIXED: Properly formats the modern newExtractorLink!
                     callback.invoke(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = name,
                             name = "$name HD",
                             url = match.groupValues[1],
                             referer = fixedIframe,
                             quality = Qualities.Unknown.value,
-                            type = INFER_TYPE
+                            isM3u8 = isM3u8File
                         )
                     )
                     foundLinks = true
