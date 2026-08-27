@@ -22,7 +22,6 @@ class Sxyland : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Standard WordPress pagination format 
         val filterParams = request.data.substringAfter("?")
         val url = if (page == 1) {
             request.data
@@ -32,7 +31,6 @@ class Sxyland : MainAPI() {
         
         val document = app.get(url, referer = "$mainUrl/").document
         
-        // Hunts for their specific grid layout
         val home = document.select("article.thumb-block").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -53,7 +51,6 @@ class Sxyland : MainAPI() {
             ?: linkElement.attr("title").takeIf { it.isNotBlank() }
             ?: return null
             
-        // First checks the data-main-thumb attribute on the article, then falls back to the img tag
         val posterUrl = fixUrlNull(
             this.attr("data-main-thumb").takeIf { it.isNotBlank() }
             ?: this.selectFirst("img.video-main-thumb")?.attr("src")
@@ -100,14 +97,12 @@ class Sxyland : MainAPI() {
             
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
 
-        // Scrapes metadata
         val tags = document.select("div.tags-list a").map { it.text().trim() }
         val actorsList = document.select("div#video-actors a").mapNotNull { elem ->
             val name = elem.text().trim()
             if (name.isNotBlank()) ActorData(Actor(name)) else null
         }
 
-        // Grabs recommendations from the bottom of the page
         val recommendations = document.select("div.under-video-block article.thumb-block").mapNotNull { it.toSearchResult() }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
@@ -124,30 +119,26 @@ class Sxyland : MainAPI() {
         val document = app.get(data, referer = "$mainUrl/").document
         var foundLinks = false
         
-        // Hunts for the embed iframe (typically nowplay.to)
         val iframeSrc = document.selectFirst("div.responsive-player iframe")?.attr("src")
         
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            // Primary method: Let Cloudstream's universal extractor handle it
             loadExtractor(fixedIframe, data, subtitleCallback, callback)
             foundLinks = true
             
-            // Fallback Manual Scraper: Just in case the universal extractor fails
             try {
                 val iframeHtml = app.get(fixedIframe, referer = data).text
                 val mediaRegex = Regex("""(https?://[^"']+\.(?:mp4|m3u8)[^"']*)""")
                 mediaRegex.findAll(iframeHtml).forEach { match ->
-                    val isM3u8File = match.groupValues[1].contains(".m3u8")
+                    // FIXED: Removed the deprecated isM3u8 parameter. Cloudstream will now auto-infer the video type.
                     callback.invoke(
                         newExtractorLink(
                             source = name,
                             name = "$name HD",
                             url = match.groupValues[1],
                             referer = fixedIframe,
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = isM3u8File
+                            quality = Qualities.Unknown.value
                         )
                     )
                     foundLinks = true
