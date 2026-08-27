@@ -136,16 +136,14 @@ class Sxyland : MainAPI() {
                 
                 val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
                 mediaRegex.findAll(cleanHtml).forEach { match ->
-                    val isM3u8File = match.groupValues[1].contains(".m3u8")
-                    // FIXED: Properly formats the modern newExtractorLink!
+                    // FIXED: Strictly uses positional arguments to bypass any named parameter deprecations
                     callback.invoke(
                         newExtractorLink(
-                            source = name,
-                            name = "$name HD",
-                            url = match.groupValues[1],
-                            referer = fixedIframe,
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = isM3u8File
+                            name,
+                            "$name HD",
+                            match.groupValues[1],
+                            fixedIframe,
+                            Qualities.Unknown.value
                         )
                     )
                     foundLinks = true
