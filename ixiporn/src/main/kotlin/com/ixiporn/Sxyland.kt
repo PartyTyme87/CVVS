@@ -124,29 +124,35 @@ class Sxyland : MainAPI() {
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
+            // Still allows Cloudstream's universal extractor to attempt a pull
             loadExtractor(fixedIframe, data, subtitleCallback, callback)
-            foundLinks = true
             
+            // ADVANCED SCRAPER: Defeats the JavaScript packer to grab the raw .m3u8 link
             try {
-                val iframeHtml = app.get(fixedIframe, referer = data).text
-                val mediaRegex = Regex("""(https?://[^"']+\.(?:mp4|m3u8)[^"']*)""")
-                mediaRegex.findAll(iframeHtml).forEach { match ->
-                    // FIXED: Restored the exact lambda builder syntax that Cloudstream requires
+                val iframeResponse = app.get(fixedIframe, referer = data).text
+                
+                // Decodes the obfuscated script on the host site
+                val unpackedHtml = JsUnpacker(iframeResponse).unpack() ?: iframeResponse
+                
+                // Cleans JSON escape characters (\/) so the URL remains intact
+                val cleanHtml = unpackedHtml.replace("\\/", "/")
+                
+                // Hunts for the exact m3u8 or mp4 media links inside the decoded HTML
+                val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
+                mediaRegex.findAll(cleanHtml).forEach { match ->
                     callback.invoke(
                         newExtractorLink(
-                            source = name,
-                            name = "$name HD",
+                            source = "NowPlay",
+                            name = "NowPlay HD",
                             url = match.groupValues[1],
-                            type = INFER_TYPE
-                        ) {
-                            this.referer = fixedIframe
-                            this.quality = Qualities.Unknown.value
-                        }
+                            referer = fixedIframe,
+                            quality = Qualities.Unknown.value
+                        )
                     )
                     foundLinks = true
                 }
             } catch (e: Exception) {
-                // Ignore fallback errors
+                e.printStackTrace()
             }
         }
 
