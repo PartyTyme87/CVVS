@@ -131,15 +131,17 @@ class Sxyland : MainAPI() {
                 val iframeHtml = app.get(fixedIframe, referer = data).text
                 val mediaRegex = Regex("""(https?://[^"']+\.(?:mp4|m3u8)[^"']*)""")
                 mediaRegex.findAll(iframeHtml).forEach { match ->
-                    // FIXED: Removed the deprecated isM3u8 parameter. Cloudstream will now auto-infer the video type.
+                    // FIXED: Restored the exact lambda builder syntax that Cloudstream requires
                     callback.invoke(
                         newExtractorLink(
                             source = name,
                             name = "$name HD",
                             url = match.groupValues[1],
-                            referer = fixedIframe,
-                            quality = Qualities.Unknown.value
-                        )
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = fixedIframe
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                     foundLinks = true
                 }
