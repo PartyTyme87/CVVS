@@ -92,7 +92,7 @@ class Brazzpw : MainAPI() {
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..10) {
-            val url = if (i == 1) "${mainUrl}/?s=$safeQuery" else "${mainUrl}/page/$i/?s=$safeQuery"
+            val url = if (i == 1) "${mainUrl}/search/free-brazz-premium-full-new-2026/?s=$safeQuery" else "${mainUrl}/search/free-brazz-premium-full-new-2026/page/$i/?s=$safeQuery"
             val document = app.get(url).document
             val results = document.select("article.loop-video, article.thumb-block").mapNotNull { it.toSearchResult() }
 
