@@ -17,7 +17,8 @@ class Brazzpw : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/page/" to "Latest Updates",
-        "${mainUrl}/pornstars/gender/female/free-brazz-premium-full-new-2026/" to "Models", // ADDED: Your Models Shelf!
+        "${mainUrl}/pornstars/gender/female/free-brazz-premium-full-new-2026/" to "Models",
+        "${mainUrl}/sites/free-brazz-premium-full-new-2026/" to "Sites", // ADDED: Your new Sites shelf!
         "${mainUrl}/videos/sortby/beingwatched/free-brazz-premium-full-new-2026/" to "Being Watched",
         "${mainUrl}/videos/sortby/rating/free-brazz-premium-full-new-2026/" to "Top Rated",
         "${mainUrl}/videos/sortby/views/free-brazz-premium-full-new-2026/" to "Most Viewed",
@@ -39,12 +40,11 @@ class Brazzpw : MainAPI() {
         
         val document = app.get(url).document
         
-        // Check if the current shelf is the Models shelf
-        val isModelShelf = request.name == "Models" || request.data.contains("/pornstars/")
+        // Checks if the current shelf is a Folder shelf (Models or Sites)
+        val isFolderShelf = request.name == "Models" || request.name == "Sites" || request.data.contains("/pornstars/") || request.data.contains("/sites/")
         
-        // Grab the items (broadened slightly just in case models use a different class)
         val home = document.select("article.loop-video, article.thumb-block, article").mapNotNull { 
-            it.toSearchResult(isModelShelf) 
+            it.toSearchResult(isFolderShelf) 
         }
 
         return newHomePageResponse(
@@ -57,12 +57,10 @@ class Brazzpw : MainAPI() {
         )
     }
 
-    // UPDATED: Incorporating your TvSeries snippet!
-    private fun Element.toSearchResult(isModel: Boolean = false): SearchResponse? {
+    private fun Element.toSearchResult(isFolder: Boolean = false): SearchResponse? {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Backup title checks in case the title attribute is empty on model cards
         val title = linkElement.attr("title").takeIf { it.isNotBlank() }
             ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
             ?: linkElement.text().trim()
@@ -75,8 +73,8 @@ class Brazzpw : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        // If it's a model, tell Cloudstream it's a TV Series (folder)!
-        return if (isModel || href.contains("/pornstar") || href.contains("/model")) {
+        // If it's a model or site, treat it as a TV Series (folder)!
+        return if (isFolder || href.contains("/pornstar") || href.contains("/model") || href.contains("/site/")) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
             }
@@ -113,8 +111,8 @@ class Brazzpw : MainAPI() {
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
-        // UPDATED: If the user clicked a Model, scrape all the videos on their page!
-        if (url.contains("/pornstar") || url.contains("/model")) {
+        // If the user clicked a Model or Site, scrape all the videos on their page!
+        if (url.contains("/pornstar") || url.contains("/model") || url.contains("/site/")) {
             val episodes = document.select("article.loop-video, article.thumb-block").mapNotNull { elem ->
                 val link = elem.selectFirst("a") ?: return@mapNotNull null
                 val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
@@ -135,14 +133,12 @@ class Brazzpw : MainAPI() {
                 }
             }
             
-            // Return a Series response featuring the episodes we just scraped
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = description
             }
         }
 
-        // Standard Movie response for regular video links
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
             this.plot      = description
