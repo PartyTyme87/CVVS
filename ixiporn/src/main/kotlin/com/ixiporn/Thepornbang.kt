@@ -62,7 +62,6 @@ class Thepornbang : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        // Maps Models, Channels, and Categories as TV Series (Folders)
         return if (isFolder || href.contains("/pornstar/") || href.contains("/studio/") || href.contains("/category/")) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
@@ -105,7 +104,6 @@ class Thepornbang : MainAPI() {
         val description = document.selectFirst("p.text-description[itemprop='description']")?.text()?.trim()
             ?: document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
 
-        // 50-Page Pagination Scraper for Folders (Models, Studios, Categories)
         if (url.contains("/pornstar/") || url.contains("/studio/") || url.contains("/category/")) {
             val episodes = mutableListOf<Episode>()
             
@@ -154,7 +152,6 @@ class Thepornbang : MainAPI() {
             }
         }
 
-        // Extracts Metadata for standard videos
         val tags = document.select("a.btn[href*='/tag/']").map { it.text().trim() }
         val actorsList = document.select("a[itemprop='actor'] span[itemprop='name']").mapNotNull { elem ->
             val name = elem.text().trim()
@@ -176,11 +173,9 @@ class Thepornbang : MainAPI() {
         val html = app.get(data, referer = "$mainUrl/").text
         var foundLinks = false
         
-        // Isolates the KVS flashvars block
         val flashvarsBlock = Regex("""var\s+flashvars\s*=\s*\{(.*?)\};""", RegexOption.DOT_MATCHES_ALL).find(html)?.groupValues?.get(1)
         
         if (flashvarsBlock != null) {
-            // Hunts for all potential video URLs (video_url, video_alt_url, video_alt_url2, etc.)
             val urlsRegex = Regex("""(video(?:_alt)?_url\d*)\s*:\s*'([^']+)'""")
             val urlMatches = urlsRegex.findAll(flashvarsBlock)
             
@@ -188,7 +183,6 @@ class Thepornbang : MainAPI() {
                 val key = match.groupValues[1]
                 val videoUrl = match.groupValues[2]
                 
-                // Matches the corresponding quality text label if the site provides it
                 val textRegex = Regex("""${key}_text\s*:\s*'([^']+)'""")
                 val textMatch = textRegex.find(flashvarsBlock)?.groupValues?.get(1) ?: ""
                 
@@ -201,15 +195,17 @@ class Thepornbang : MainAPI() {
                     else -> Qualities.Unknown.value
                 }
                 
-                // Positional arguments to ensure Gradle builds it without complaining about deprecated parameters!
+                // Matches the identical builder structure used successfully in Brazzpw.kt
                 callback.invoke(
                     newExtractorLink(
-                        name,
-                        if (textMatch.isNotBlank()) "$name $textMatch" else name,
-                        videoUrl,
-                        data,
-                        quality
-                    )
+                        source = this.name,
+                        name = if (textMatch.isNotBlank()) "${this.name} $textMatch" else this.name,
+                        url = videoUrl,
+                        type = INFER_TYPE
+                    ) {
+                        this.referer = data
+                        this.quality = quality
+                    }
                 )
                 foundLinks = true
             }
