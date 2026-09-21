@@ -18,7 +18,7 @@ class Brazzpw : MainAPI() {
     override val mainPage = mainPageOf(
         "${mainUrl}/page/" to "Latest Updates",
         "${mainUrl}/pornstars/gender/female/free-brazz-premium-full-new-2026/" to "Models",
-        "${mainUrl}/sites/free-brazz-premium-full-new-2026/" to "Sites", // ADDED: Your new Sites shelf!
+        "${mainUrl}/sites/free-brazz-premium-full-new-2026/" to "Sites",
         "${mainUrl}/videos/sortby/beingwatched/free-brazz-premium-full-new-2026/" to "Being Watched",
         "${mainUrl}/videos/sortby/rating/free-brazz-premium-full-new-2026/" to "Top Rated",
         "${mainUrl}/videos/sortby/views/free-brazz-premium-full-new-2026/" to "Most Viewed",
@@ -39,12 +39,32 @@ class Brazzpw : MainAPI() {
         }
         
         val document = app.get(url).document
-        
-        // Checks if the current shelf is a Folder shelf (Models or Sites)
         val isFolderShelf = request.name == "Models" || request.name == "Sites" || request.data.contains("/pornstars/") || request.data.contains("/sites/")
-        
-        val home = document.select("article.loop-video, article.thumb-block, article").mapNotNull { 
-            it.toSearchResult(isFolderShelf) 
+
+        val home = if (request.name == "Sites") {
+            // CUSTOM PARSER: Specifically extracts the nested <div> layout on the Sites page
+            document.select("a[href*='/videos/site/']").mapNotNull { link ->
+                val img = link.selectFirst("img") ?: return@mapNotNull null
+                val href = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                
+                val title = link.attr("title").takeIf { it.isNotBlank() } 
+                    ?: img.attr("title").takeIf { it.isNotBlank() } 
+                    ?: "Site"
+                    
+                val posterUrl = fixUrlNull(
+                    img.attr("data-src").takeIf { it.isNotBlank() } 
+                    ?: img.attr("src")
+                )
+                
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                    this.posterUrl = posterUrl
+                }
+            }.distinctBy { it.url } // Prevents duplicates since there are two links per site block
+        } else {
+            // STANDARD PARSER: Extracts the normal <article> blocks for everything else
+            document.select("article.loop-video, article.thumb-block, article").mapNotNull { 
+                it.toSearchResult(isFolderShelf) 
+            }
         }
 
         return newHomePageResponse(
@@ -73,7 +93,6 @@ class Brazzpw : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() }
         )
 
-        // If it's a model or site, treat it as a TV Series (folder)!
         return if (isFolder || href.contains("/pornstar") || href.contains("/model") || href.contains("/site/")) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
@@ -111,7 +130,6 @@ class Brazzpw : MainAPI() {
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
-        // If the user clicked a Model or Site, scrape all the videos on their page!
         if (url.contains("/pornstar") || url.contains("/model") || url.contains("/site/")) {
             val episodes = document.select("article.loop-video, article.thumb-block").mapNotNull { elem ->
                 val link = elem.selectFirst("a") ?: return@mapNotNull null
