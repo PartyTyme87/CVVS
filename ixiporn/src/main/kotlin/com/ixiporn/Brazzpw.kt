@@ -42,7 +42,6 @@ class Brazzpw : MainAPI() {
         val isFolderShelf = request.name == "Models" || request.name == "Sites" || request.data.contains("/pornstars/") || request.data.contains("/sites/")
 
         val home = if (request.name == "Sites") {
-            // CUSTOM PARSER: Specifically extracts the nested <div> layout on the Sites page
             document.select("a[href*='/videos/site/']").mapNotNull { link ->
                 val img = link.selectFirst("img") ?: return@mapNotNull null
                 val href = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
@@ -59,9 +58,8 @@ class Brazzpw : MainAPI() {
                 newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                     this.posterUrl = posterUrl
                 }
-            }.distinctBy { it.url } // Prevents duplicates since there are two links per site block
+            }.distinctBy { it.url }
         } else {
-            // STANDARD PARSER: Extracts the normal <article> blocks for everything else
             document.select("article.loop-video, article.thumb-block, article").mapNotNull { 
                 it.toSearchResult(isFolderShelf) 
             }
@@ -131,23 +129,52 @@ class Brazzpw : MainAPI() {
         val description = document.selectFirst("meta[name='description']")?.attr("content")?.trim()
 
         if (url.contains("/pornstar") || url.contains("/model") || url.contains("/site/")) {
-            val episodes = document.select("article.loop-video, article.thumb-block").mapNotNull { elem ->
-                val link = elem.selectFirst("a") ?: return@mapNotNull null
-                val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
-                
-                val epTitle = link.attr("title").takeIf { it.isNotBlank() } 
-                    ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
-                    ?: "Video"
+            val episodes = mutableListOf<Episode>()
+            
+            // Loop through up to 50 pages of content for the selected Model or Site
+            for (page in 1..50) {
+                val pageUrl = if (page == 1) {
+                    url
+                } else {
+                    if (url.contains("free-brazz-premium-full-new-2026/")) {
+                        url.replace("free-brazz-premium-full-new-2026/", "page/$page/free-brazz-premium-full-new-2026/")
+                    } else {
+                        if (url.endsWith("/")) "${url}page/$page/" else "$url/page/$page/"
+                    }
+                }
+
+                try {
+                    val pageDoc = if (page == 1) document else app.get(pageUrl).document
+                    val pageEpisodes = pageDoc.select("article.loop-video, article.thumb-block").mapNotNull { elem ->
+                        val link = elem.selectFirst("a") ?: return@mapNotNull null
+                        val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+                        
+                        val epTitle = link.attr("title").takeIf { it.isNotBlank() } 
+                            ?: elem.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+                            ?: "Video"
+                            
+                        val epImg = elem.selectFirst("img")
+                        val epPoster = fixUrlNull(
+                            epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
+                            ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
+                        )
+                        
+                        newEpisode(epHref) {
+                            this.name = epTitle
+                            this.posterUrl = epPoster
+                        }
+                    }
+
+                    if (pageEpisodes.isEmpty()) break
                     
-                val epImg = elem.selectFirst("img")
-                val epPoster = fixUrlNull(
-                    epImg?.attr("data-src")?.takeIf { it.isNotBlank() }
-                    ?: epImg?.attr("src")?.takeIf { it.isNotBlank() }
-                )
-                
-                newEpisode(epHref) {
-                    this.name = epTitle
-                    this.posterUrl = epPoster
+                    // Safeguard: Breaks the loop if the site runs out of pages and just redirects back to page 1
+                    val existingUrls = episodes.map { it.data }
+                    val newEpisodes = pageEpisodes.filter { it.data !in existingUrls }
+                    if (newEpisodes.isEmpty()) break
+
+                    episodes.addAll(newEpisodes)
+                } catch (e: Exception) {
+                    break // Breaks out cleanly if a page throws a 404 error
                 }
             }
             
