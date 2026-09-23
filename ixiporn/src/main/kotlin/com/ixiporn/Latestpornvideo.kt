@@ -137,14 +137,17 @@ class Latestpornvideo : MainAPI() {
                 
                 val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
                 mediaRegex.findAll(cleanHtml).forEach { match ->
+                    // FIXED: Restored the proven lambda builder format!
                     callback.invoke(
                         newExtractorLink(
-                            name,
-                            "$name HD",
-                            match.groupValues[1],
-                            fixedIframe,
-                            Qualities.Unknown.value
-                        )
+                            source = name,
+                            name = "$name HD",
+                            url = match.groupValues[1],
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = fixedIframe
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                     foundLinks = true
                 }
