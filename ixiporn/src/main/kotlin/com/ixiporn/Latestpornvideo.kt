@@ -14,6 +14,13 @@ class Latestpornvideo : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
+    // Standard browser headers to prevent Cloudflare from silently dropping the connection
+    private val defaultHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.5"
+    )
+
     override val mainPage = mainPageOf(
         "${mainUrl}/?filter=latest" to "Latest Videos",
         "${mainUrl}/?filter=most-viewed" to "Most Viewed",
@@ -27,7 +34,6 @@ class Latestpornvideo : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // Handles pagination for both query filters and category folders
             if (request.data.contains("?filter=")) {
                 request.data.replace("?", "page/$page/?")
             } else {
@@ -35,7 +41,8 @@ class Latestpornvideo : MainAPI() {
             }
         }
         
-        val document = app.get(url, referer = "$mainUrl/").document
+        // Injects the Chrome headers to bypass the timeout block
+        val document = app.get(url, headers = defaultHeaders).document
         val home = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -52,7 +59,6 @@ class Latestpornvideo : MainAPI() {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Checks multiple attributes since titles can shift depending on the specific page layout
         val title = this.attr("data-title").takeIf { it.isNotBlank() }
             ?: linkElement.attr("title").takeIf { it.isNotBlank() }
             ?: linkElement.attr("data-title").takeIf { it.isNotBlank() }
@@ -81,7 +87,7 @@ class Latestpornvideo : MainAPI() {
             }
             
             try {
-                val document = app.get(url, referer = "$mainUrl/").document
+                val document = app.get(url, headers = defaultHeaders).document
                 val results = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
                 if (results.isEmpty()) break
@@ -94,7 +100,7 @@ class Latestpornvideo : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, referer = "$mainUrl/").document
+        val document = app.get(url, headers = defaultHeaders).document
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() 
             ?: document.selectFirst("meta[itemprop='name']")?.attr("content")?.trim() 
@@ -116,28 +122,25 @@ class Latestpornvideo : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val document = app.get(data, referer = "$mainUrl/").document
+        val document = app.get(data, headers = defaultHeaders).document
         var foundLinks = false
         
-        // Isolates the external iframe (e.g., lulust.com)
         val iframeSrc = document.selectFirst("div.responsive-player iframe")?.attr("src")
         
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            // Primary Method: Let Cloudstream's universal host extractors handle the heavy lifting
             loadExtractor(fixedIframe, data, subtitleCallback, callback)
             foundLinks = true
             
-            // Fallback Method: JsUnpacker and Regex grab in case the iframe embeds raw links
             try {
-                val iframeHtml = app.get(fixedIframe, referer = data).text
+                // Passes the Chrome headers into the fallback scraper as well
+                val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data)).text
                 val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
                 val cleanHtml = unpackedHtml.replace("\\/", "/")
                 
                 val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
                 mediaRegex.findAll(cleanHtml).forEach { match ->
-                    // FIXED: Restored the proven lambda builder format!
                     callback.invoke(
                         newExtractorLink(
                             source = name,
