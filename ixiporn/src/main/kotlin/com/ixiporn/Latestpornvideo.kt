@@ -40,7 +40,6 @@ class Latestpornvideo : MainAPI() {
             }
         }
         
-        // Added timeout = 30 to force the app to wait through long connection delays
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
         val home = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
@@ -129,31 +128,72 @@ class Latestpornvideo : MainAPI() {
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            loadExtractor(fixedIframe, data, subtitleCallback, callback)
-            foundLinks = true
+            // 1. Attempt with the native URL
+            foundLinks = loadExtractor(fixedIframe, data, subtitleCallback, callback)
             
-            try {
-                val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30).text
-                val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
-                val cleanHtml = unpackedHtml.replace("\\/", "/")
-                
-                val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
-                mediaRegex.findAll(cleanHtml).forEach { match ->
-                    callback.invoke(
-                        newExtractorLink(
-                            source = name,
-                            name = "$name HD",
-                            url = match.groupValues[1],
-                            type = INFER_TYPE
-                        ) {
-                            this.referer = fixedIframe
-                            this.quality = Qualities.Unknown.value
+            // 2. LULUSTREAM DOMAIN HACK:
+            // Cloudstream's native extractor might not recognize the new 'lulust.com' domain.
+            // By swapping the domain to 'luluvdo' or 'lulustream', we trick the app into
+            // utilizing its own built-in Lulustream extractor to bypass the block!
+            if (!foundLinks) {
+                foundLinks = loadExtractor(fixedIframe.replace("lulust.com", "luluvdo.com"), data, subtitleCallback, callback)
+            }
+            if (!foundLinks) {
+                foundLinks = loadExtractor(fixedIframe.replace("lulust.com", "lulustream.com"), data, subtitleCallback, callback)
+            }
+            
+            // 3. Fallback: Advanced JS Unpacking and Regex hunting
+            if (!foundLinks) {
+                try {
+                    val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30).text
+                    val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
+                    val cleanHtml = unpackedHtml.replace("\\/", "/")
+                    
+                    // Targets the specific 'file:' layout used by JWPlayer and VideoJS hosts
+                    val fileRegex = Regex("""file\s*:\s*["'](https?://[^"']+)["']""")
+                    fileRegex.findAll(cleanHtml).forEach { match ->
+                        val videoUrl = match.groupValues[1]
+                        if (videoUrl.contains(".m3u8") || videoUrl.contains(".mp4") || videoUrl.contains("/hls/")) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = "Lulustream",
+                                    name = "Lulustream HD",
+                                    url = videoUrl,
+                                    type = INFER_TYPE
+                                ) {
+                                    this.referer = fixedIframe
+                                    this.headers = mapOf(
+                                        "Referer" to fixedIframe,
+                                        "Origin" to "https://lulust.com"
+                                    )
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                            foundLinks = true
                         }
-                    )
-                    foundLinks = true
+                    }
+                    
+                    // Final safety net: Standard raw link grabber
+                    if (!foundLinks) {
+                        val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
+                        mediaRegex.findAll(cleanHtml).forEach { match ->
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = name,
+                                    name = "$name HD",
+                                    url = match.groupValues[1],
+                                    type = INFER_TYPE
+                                ) {
+                                    this.referer = fixedIframe
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                            foundLinks = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore fallback errors
                 }
-            } catch (e: Exception) {
-                // Ignore fallback errors
             }
         }
         
