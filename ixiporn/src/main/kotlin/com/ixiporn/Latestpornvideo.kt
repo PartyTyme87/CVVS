@@ -14,7 +14,6 @@ class Latestpornvideo : MainAPI() {
     override val supportedTypes       = setOf(TvType.NSFW)
     override val vpnStatus            = VPNStatus.MightBeNeeded
 
-    // Standard browser headers to prevent Cloudflare from silently dropping the connection
     private val defaultHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -41,8 +40,8 @@ class Latestpornvideo : MainAPI() {
             }
         }
         
-        // Injects the Chrome headers to bypass the timeout block
-        val document = app.get(url, headers = defaultHeaders).document
+        // Added timeout = 30 to force the app to wait through long connection delays
+        val document = app.get(url, headers = defaultHeaders, timeout = 30).document
         val home = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -87,7 +86,7 @@ class Latestpornvideo : MainAPI() {
             }
             
             try {
-                val document = app.get(url, headers = defaultHeaders).document
+                val document = app.get(url, headers = defaultHeaders, timeout = 30).document
                 val results = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
                 if (results.isEmpty()) break
@@ -100,7 +99,7 @@ class Latestpornvideo : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = defaultHeaders).document
+        val document = app.get(url, headers = defaultHeaders, timeout = 30).document
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim() 
             ?: document.selectFirst("meta[itemprop='name']")?.attr("content")?.trim() 
@@ -122,7 +121,7 @@ class Latestpornvideo : MainAPI() {
     }
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val document = app.get(data, headers = defaultHeaders).document
+        val document = app.get(data, headers = defaultHeaders, timeout = 30).document
         var foundLinks = false
         
         val iframeSrc = document.selectFirst("div.responsive-player iframe")?.attr("src")
@@ -134,8 +133,7 @@ class Latestpornvideo : MainAPI() {
             foundLinks = true
             
             try {
-                // Passes the Chrome headers into the fallback scraper as well
-                val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data)).text
+                val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30).text
                 val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
                 val cleanHtml = unpackedHtml.replace("\\/", "/")
                 
