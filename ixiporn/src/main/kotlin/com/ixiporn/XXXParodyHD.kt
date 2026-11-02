@@ -3,6 +3,8 @@ package com.coxju
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.readValue
 
 class XXXParodyHD : MainAPI() {
     override var mainUrl              = "https://xxxparodyhd.net"
@@ -42,7 +44,6 @@ class XXXParodyHD : MainAPI() {
         
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
         
-        // Grabs both standard cards and the "featured" spotlight cards at the top
         val home = document.select("article.card, article.spot__i").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -70,7 +71,6 @@ class XXXParodyHD : MainAPI() {
             ?: img?.attr("data-src")?.takeIf { it.isNotBlank() }
         )
 
-        // Dynamically treats Genres, Directors, and Pornstars as TV Series (Folders)
         val isFolder = href.contains("/director/") || href.contains("/genre/") || href.contains("/actor/") || href.contains("/pornstar/")
         
         return if (isFolder) {
@@ -116,9 +116,9 @@ class XXXParodyHD : MainAPI() {
             ?: "Video"
             
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
-        val description = document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
+        val description = document.selectFirst("div.desc")?.text()?.trim() 
+            ?: document.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
 
-        // 50-Page Pagination Scraper for Folders
         if (url.contains("/director/") || url.contains("/genre/") || url.contains("/actor/") || url.contains("/pornstar/")) {
             val episodes = mutableListOf<Episode>()
             
@@ -167,13 +167,12 @@ class XXXParodyHD : MainAPI() {
             }
         }
 
-        // Standard Movie Metadata
-        val tags = document.select("a[href*='/genre/']").map { it.text().trim() }
-        val actorsList = document.select("a[href*='/actor/'], a[href*='/pornstar/']").mapNotNull { elem ->
+        val tags = document.select("a.chip[href*='/genre/']").map { it.text().trim() }
+        val actorsList = document.select("a.chip[href*='/pornstar/']").mapNotNull { elem ->
             val name = elem.text().trim()
             if (name.isNotBlank()) ActorData(Actor(name)) else null
         }
-        val recommendations = document.select("article.card, article.spot__i").mapNotNull { it.toSearchResult() }
+        val recommendations = document.select("div.grid article.card, article.spot__i").mapNotNull { it.toSearchResult() }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -184,66 +183,47 @@ class XXXParodyHD : MainAPI() {
             this.recommendations = recommendations
         }
     }
+    
+    // Data class to easily map the embedded JSON server data
+    data class HlmServer(
+        @JsonProperty("u") val url: String?,
+        @JsonProperty("l") val label: String?
+    )
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val html = app.get(data, headers = defaultHeaders, timeout = 30).text
-        val document = org.jsoup.Jsoup.parse(html)
+        val document = app.get(data, headers = defaultHeaders, timeout = 30).document
         var foundLinks = false
         
-        // Hunts for all potential embedded video iframes while ignoring ad blocks
-        val iframes = document.select("iframe").mapNotNull { it.attr("src") }
-            .filter { it.isNotBlank() && !it.contains("displayvertising") && !it.contains("a-ads") }
-            
-        iframes.forEach { iframeSrc ->
-            val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
-            
-            // Allows Cloudstream's universal extractor to process it
-            val extracted = loadExtractor(fixedIframe, data, subtitleCallback, callback)
-            if (extracted) foundLinks = true
-            
-            // Fallback Manual Scraper
+        // 1. Target the HLM data-servers JSON array
+        val serverJsonRaw = document.selectFirst("section.hlm")?.attr("data-servers")
+        
+        if (!serverJsonRaw.isNullOrBlank()) {
             try {
-                val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30).text
-                val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
-                val cleanHtml = unpackedHtml.replace("\\/", "/")
+                // Parse the JSON string into our data class
+                val servers = AppUtils.parseJson<List<HlmServer>>(serverJsonRaw)
                 
-                val mediaRegex = Regex("""(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
-                mediaRegex.findAll(cleanHtml).forEach { match ->
-                    callback.invoke(
-                        // Maintains strict positional format for clean Gradle compiles
-                        newExtractorLink(
-                            source = name,
-                            name = "$name HD",
-                            url = match.groupValues[1],
-                            type = INFER_TYPE
-                        ) {
-                            this.referer = fixedIframe
-                            this.quality = Qualities.Unknown.value
-                        }
-                    )
-                    foundLinks = true
+                servers.forEach { server ->
+                    if (!server.url.isNullOrBlank()) {
+                        val fixedUrl = fixUrl(server.url.replace("\\/", "/"))
+                        // Pass the extracted host URL (like Streamtape or VOE) directly to Cloudstream
+                        val extracted = loadExtractor(fixedUrl, data, subtitleCallback, callback)
+                        if (extracted) foundLinks = true
+                    }
                 }
             } catch (e: Exception) {
-                // Ignore fallback errors
+                // Failsafe in case the JSON mapping breaks
             }
         }
         
-        // Final fallback for direct <source> tags
-        val directSources = document.select("video source").mapNotNull { it.attr("src") }
-        directSources.forEach { src ->
-            if (src.isNotBlank()) {
-                callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name Direct",
-                        url = fixUrl(src),
-                        type = INFER_TYPE
-                    ) {
-                        this.referer = data
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-                foundLinks = true
+        // 2. Fallback: Standard iframe search just in case the JSON is missing
+        if (!foundLinks) {
+            val iframes = document.select("iframe").mapNotNull { it.attr("src") }
+                .filter { it.isNotBlank() && !it.contains("displayvertising") && !it.contains("a-ads") }
+                
+            iframes.forEach { iframeSrc ->
+                val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
+                val extracted = loadExtractor(fixedIframe, data, subtitleCallback, callback)
+                if (extracted) foundLinks = true
             }
         }
         
