@@ -17,5 +17,6 @@ class ixipornProvider: Plugin() {
         registerMainAPI(Paradisehill())
         registerMainAPI(Thepornbang())
         registerMainAPI(Latestpornvideo())
+        registerMainAPI(XXXParodyHD())
     }
 }
