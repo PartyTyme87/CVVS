@@ -3,8 +3,6 @@ package com.coxju
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.module.kotlin.readValue
 
 class XXXParodyHD : MainAPI() {
     override var mainUrl              = "https://xxxparodyhd.net"
@@ -183,15 +181,10 @@ class XXXParodyHD : MainAPI() {
             this.recommendations = recommendations
         }
     }
-    
-    // Data class to easily map the embedded JSON server data
-    data class HlmServer(
-        @JsonProperty("u") val url: String?,
-        @JsonProperty("l") val label: String?
-    )
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        val document = app.get(data, headers = defaultHeaders, timeout = 30).document
+        val html = app.get(data, headers = defaultHeaders, timeout = 30).text
+        val document = org.jsoup.Jsoup.parse(html)
         var foundLinks = false
         
         // 1. Target the HLM data-servers JSON array
@@ -199,19 +192,18 @@ class XXXParodyHD : MainAPI() {
         
         if (!serverJsonRaw.isNullOrBlank()) {
             try {
-                // Parse the JSON string into our data class
-                val servers = AppUtils.parseJson<List<HlmServer>>(serverJsonRaw)
-                
-                servers.forEach { server ->
-                    if (!server.url.isNullOrBlank()) {
-                        val fixedUrl = fixUrl(server.url.replace("\\/", "/"))
-                        // Pass the extracted host URL (like Streamtape or VOE) directly to Cloudstream
+                // Replaced AppUtils.parseJson with Regex to avoid JVM Target 1.8/11 compiler mismatches
+                val urlRegex = Regex(""""u"\s*:\s*"([^"]+)"""")
+                urlRegex.findAll(serverJsonRaw).forEach { match ->
+                    val serverUrl = match.groupValues[1].replace("\\/", "/")
+                    if (serverUrl.isNotBlank()) {
+                        val fixedUrl = fixUrl(serverUrl)
                         val extracted = loadExtractor(fixedUrl, data, subtitleCallback, callback)
                         if (extracted) foundLinks = true
                     }
                 }
             } catch (e: Exception) {
-                // Failsafe in case the JSON mapping breaks
+                // Failsafe
             }
         }
         
