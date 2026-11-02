@@ -192,88 +192,60 @@ class FxPornHD : MainAPI() {
         val document = org.jsoup.Jsoup.parse(html)
         var foundLinks = false
         
-        // FxPornHD uses the responsive-player wrapper for its WatchStreamUs embeds
+        // 1. Direct Extractor (The Shortcut)
+        // Grabs the direct Streamtape/Server link hiding in the tracking button
+        val trackingUrls = document.select("div.tracking-btn a").mapNotNull { it.attr("href") }
+        trackingUrls.forEach { trackingUrl ->
+            if (trackingUrl.isNotBlank() && trackingUrl != "#!") {
+                val fixedUrl = fixUrl(if (trackingUrl.startsWith("//")) "https:$trackingUrl" else trackingUrl)
+                val extracted = loadExtractor(fixedUrl, data, subtitleCallback, callback)
+                if (extracted) foundLinks = true
+            }
+        }
+        
+        // 2. Iframe Fallback
+        // Triggers if the tracking button is missing or fails
         val iframeSrc = document.selectFirst("div.responsive-player iframe, div.video-embed iframe")?.attr("src")
         
         if (!iframeSrc.isNullOrBlank()) {
             val fixedIframe = fixUrl(if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc)
             
-            // 1. Try Cloudstream's native extractors first
-            foundLinks = loadExtractor(fixedIframe, data, subtitleCallback, callback)
+            val extracted = loadExtractor(fixedIframe, data, subtitleCallback, callback)
+            if (extracted) foundLinks = true
             
-            // 2. Comprehensive WatchStreamUs & Custom Player Fallback
-            if (!foundLinks) {
+            // 3. Deep Unpacker Fallback for WatchStreamUs
+            if (!foundLinks && fixedIframe.contains("watchstreamus.com/embed/")) {
                 try {
-                    // Fetch the iframe content, explicitly passing the FxPornHD referer
-                    val iframeResponse = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30)
-                    val iframeHtml = iframeResponse.text
+                    val iframeHtml = app.get(fixedIframe, headers = defaultHeaders + mapOf("Referer" to data), timeout = 30).text
                     val unpackedHtml = JsUnpacker(iframeHtml).unpack() ?: iframeHtml
                     val cleanHtml = unpackedHtml.replace("\\/", "/")
+                    val originHost = "https://player.watchstreamus.com"
                     
-                    val iframeDoc = org.jsoup.Jsoup.parse(cleanHtml)
-                    val originHost = Regex("""^(https?://[^/]+)""").find(iframeResponse.url)?.groupValues?.get(1) ?: "https://player.watchstreamus.com"
-                    
-                    // A. Check for inner iframes (WatchStreamUs might just be a wrapper for Streamtape, MixDrop, or Doodstream)
-                    iframeDoc.select("iframe").mapNotNull { it.attr("src") }.forEach { innerIframe ->
-                        if (innerIframe.isNotBlank()) {
-                            val fixedInner = fixUrl(if (innerIframe.startsWith("//")) "https:$innerIframe" else innerIframe)
-                            val extracted = loadExtractor(fixedInner, fixedIframe, subtitleCallback, callback)
-                            if (extracted) foundLinks = true
-                        }
-                    }
-                    
-                    // B. Direct <source> tags embedded inside the iframe
-                    if (!foundLinks) {
-                        iframeDoc.select("video source").mapNotNull { it.attr("src") }.forEach { src ->
-                            if (src.isNotBlank()) {
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = "$name HD",
-                                        url = fixUrl(src),
-                                        type = INFER_TYPE
-                                    ) {
-                                        this.referer = data // Top-level referer is often required by secure CDNs
-                                        this.headers = mapOf(
-                                            "Referer" to data,
-                                            "Origin" to originHost
-                                        )
-                                        this.quality = Qualities.Unknown.value
-                                    }
-                                )
-                                foundLinks = true
-                            }
-                        }
-                    }
-
-                    // C. Deep Regex Fallback for obfuscated file:/src: links and raw .mp4/.m3u8 URLs
-                    if (!foundLinks) {
-                        val mediaRegex = Regex("""(?:file|src|url)\s*:\s*["'](https?://[^"']+)["']|(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
-                        mediaRegex.findAll(cleanHtml).forEach { match ->
-                            val rawUrl = match.groupValues[1].takeIf { it.isNotBlank() } ?: match.groupValues[2]
-                            
-                            if (rawUrl.isNotBlank() && (rawUrl.contains(".mp4") || rawUrl.contains(".m3u8") || rawUrl.contains("/hls/"))) {
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = "$name HD",
-                                        url = rawUrl,
-                                        type = INFER_TYPE
-                                    ) {
-                                        this.referer = data
-                                        this.headers = mapOf(
-                                            "Referer" to data,
-                                            "Origin" to originHost
-                                        )
-                                        this.quality = Qualities.Unknown.value
-                                    }
-                                )
-                                foundLinks = true
-                            }
+                    val mediaRegex = Regex("""(?:file|src|url)\s*:\s*["'](https?://[^"']+)["']|(https?://[^"'\s,;]+\.(?:m3u8|mp4)[^"'\s,;]*)""")
+                    mediaRegex.findAll(cleanHtml).forEach { match ->
+                        val rawUrl = match.groupValues[1].takeIf { it.isNotBlank() } ?: match.groupValues[2]
+                        
+                        if (rawUrl.isNotBlank() && (rawUrl.contains(".mp4") || rawUrl.contains(".m3u8") || rawUrl.contains("/hls/"))) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = name,
+                                    name = "$name HD",
+                                    url = rawUrl,
+                                    type = INFER_TYPE
+                                ) {
+                                    this.referer = data
+                                    this.headers = mapOf(
+                                        "Referer" to data,
+                                        "Origin" to originHost
+                                    )
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                            foundLinks = true
                         }
                     }
                 } catch (e: Exception) {
-                    // Ignore fallback errors to prevent crashes
+                    // Ignore fallback errors
                 }
             }
         }
