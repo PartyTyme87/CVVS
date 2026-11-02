@@ -25,8 +25,8 @@ class XXXParodyHD : MainAPI() {
         "${mainUrl}/most-viewed/" to "Most Viewed",
         "${mainUrl}/most-rating/" to "Top Rated",
         "${mainUrl}/parody-genres/" to "Genres",
-        "${mainUrl}/parody-pornstars/" to "Pornstars",
-        "${mainUrl}/parody-studios/" to "Studios"
+        "${mainUrl}/pornstar/isiah-maxwell/" to "Pornstars",
+        "${mainUrl}/director/elegant-angel/" to "Elegant Angel"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
