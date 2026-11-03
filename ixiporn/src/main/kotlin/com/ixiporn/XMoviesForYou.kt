@@ -22,7 +22,8 @@ class XMoviesForYou : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/" to "Latest Videos",
-        "${mainUrl}/most-viewed/" to "Most Viewed"
+        "${mainUrl}/studios/" to "Studios",
+        "${mainUrl}/pornstars/" to "All Pornstars"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
