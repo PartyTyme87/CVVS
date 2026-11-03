@@ -22,8 +22,8 @@ class XMoviesForYou : MainAPI() {
 
     override val mainPage = mainPageOf(
         "${mainUrl}/" to "Latest Videos",
-        "${mainUrl}/studios/bangbros/" to "bangbros",
-        "${mainUrl}/pornstars/octokuro-699592509e5fd" to "Octokuro"
+        "${mainUrl}/studios/" to "Studios",
+        "${mainUrl}/pornstars/" to "Pornstars"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -64,7 +64,7 @@ class XMoviesForYou : MainAPI() {
         // Maps Actors, Studios, and Categories to Folders if necessary, otherwise defaults to Movie
         val isFolder = href.contains("/category/") || href.contains("/tag/") || href.contains("/pornstar/") || href.contains("/studio/")
         
-        return if (isFolder) {
+        return if (isFolder || href.contains("/pornstar") || href.contains("/model") || href.contains("/studio")) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
             }
