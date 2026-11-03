@@ -20,5 +20,6 @@ class ixipornProvider: Plugin() {
         registerMainAPI(XXXParodyHD())
         registerMainAPI(XTapes())
         registerMainAPI(FxPornHD())
+        registerMainAPI(XMoviesForYou())
     }
 }
