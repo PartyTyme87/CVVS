@@ -3,8 +3,10 @@ package com.ukdevilz
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import android.content.SharedPreferences
 
-class UKDevilz : MainAPI() {
+// We now accept the preferences passed from the Plugin
+class UKDevilz(private val prefs: SharedPreferences) : MainAPI() {
     override var mainUrl              = "https://ukdevilz.com"
     override var name                 = "UKDevilz"
     override val hasMainPage          = true
@@ -20,11 +22,11 @@ class UKDevilz : MainAPI() {
         "Accept-Language" to "en-US,en;q=0.5"
     )
 
-    // Pulls the user's toggle choices from Cloudstream's SharedPreferences
-    private val showMariza get() = app.preferences.getBoolean("ukd_mariza_rabbit", true)
-    private val showViolet get() = app.preferences.getBoolean("ukd_violet_myers", true)
-    private val showVictoria get() = app.preferences.getBoolean("ukd_victoria_june", true)
-    private val showYashmine get() = app.preferences.getBoolean("ukd_yashmine_khan", true)
+    // Read directly from the passed SharedPreferences instance
+    private val showMariza get() = prefs.getBoolean("ukd_mariza_rabbit", true)
+    private val showViolet get() = prefs.getBoolean("ukd_violet_myers", true)
+    private val showVictoria get() = prefs.getBoolean("ukd_victoria_june", true)
+    private val showYashmine get() = prefs.getBoolean("ukd_yashmine_khan", true)
 
     // Dynamically builds the homepage tables based on active preferences
     override val mainPage: List<MainPageData>
@@ -79,7 +81,6 @@ class UKDevilz : MainAPI() {
             ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
         )
 
-        // Maps Actors, Studios, and Categories to Folders
         val isFolder = href.contains("/category/") || href.contains("/tag/") || href.contains("/pornstar/") || href.contains("/studio/")
         
         return if (isFolder) {
@@ -126,7 +127,6 @@ class UKDevilz : MainAPI() {
             } ?: document.selectFirst("meta[property='og:image']")?.attr("content")
         )
         
-        // Parses the 50-page folder logic for tags/actors/studios
         if (url.contains("/category/") || url.contains("/tag/") || url.contains("/pornstar/") || url.contains("/studio/")) {
             val episodes = mutableListOf<Episode>()
             
@@ -189,7 +189,6 @@ class UKDevilz : MainAPI() {
         val html = app.get(data, headers = defaultHeaders, timeout = 30).text
         var foundLinks = false
         
-        // Target the embedded JWPlayer JSON block
         val playlistRegex = Regex("""window\.playlist\s*=\s*(\{.*?\});""")
         val match = playlistRegex.find(html)
         
@@ -222,7 +221,6 @@ class UKDevilz : MainAPI() {
             }
         }
         
-        // Fallback: Checks for standard <video> or <source> tags
         if (!foundLinks) {
             val document = org.jsoup.Jsoup.parse(html)
             document.select("video source").mapNotNull { it.attr("src") }.forEach { src ->
