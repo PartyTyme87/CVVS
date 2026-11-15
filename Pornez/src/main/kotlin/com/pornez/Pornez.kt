@@ -44,7 +44,9 @@ class Pornez : MainAPI() {
         }
         
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
-        val home = document.select("div.item").mapNotNull { it.toSearchResult() }
+        
+        // Widened the selector to catch various PVVStream theme wrappers
+        val home = document.select("div.item, div.video, div.post, article.post, div.video-block").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -57,11 +59,15 @@ class Pornez : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val linkElement = this.selectFirst("a.item_link") ?: return null
+        // Broadened link finding logic
+        val linkElement = this.selectFirst("a.item_link, a[href*='/watch/'], a[href*='/video/']") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
+        // Stronger title extraction fallback chain
         val title = this.attr("data-video-title-base").takeIf { it.isNotBlank() } 
-            ?: this.selectFirst("div.title")?.text()?.trim() 
+            ?: this.selectFirst("div.title, div.video-title, h3, h2, span.title")?.text()?.trim() 
+            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
+            ?: linkElement.attr("title").takeIf { it.isNotBlank() }
             ?: return null
             
         val img = this.selectFirst("img")
@@ -82,7 +88,7 @@ class Pornez : MainAPI() {
             }
         }
     }
-
+    
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         val safeQuery = query.replace(" ", "+")
