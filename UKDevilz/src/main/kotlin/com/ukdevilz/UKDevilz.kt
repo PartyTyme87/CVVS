@@ -20,26 +20,16 @@ class UKDevilz : MainAPI() {
         "Accept-Language" to "en-US,en;q=0.5"
     )
 
-    // Pulls the user's toggle choices natively from Cloudstream
-    private val showMariza get() = app.preferences.getBoolean("ukd_mariza_rabbit", true)
-    private val showViolet get() = app.preferences.getBoolean("ukd_violet_myers", true)
-    private val showVictoria get() = app.preferences.getBoolean("ukd_victoria_june", true)
-    private val showYashmine get() = app.preferences.getBoolean("ukd_yashmine_khan", true)
-
-    // Dynamically builds the homepage tables based on active preferences
-    override val mainPage: List<MainPageData>
-        get() = mainPageOf(
-            *listOfNotNull(
-                "${mainUrl}/home?range=month" to "Popular",
-                "${mainUrl}/now" to "Watching Now",
-                "${mainUrl}/home?range=explore" to "Explore",
-                "${mainUrl}/home?range=recent" to "Recent",
-                if (showMariza) "${mainUrl}/video/mariza%20rabbit" to "Mariza Rabbit" else null,
-                if (showViolet) "${mainUrl}/video/Violet%20Myers" to "Violet Myers" else null,
-                if (showVictoria) "${mainUrl}/video/victoria%20june" to "Victoria June" else null,
-                if (showYashmine) "${mainUrl}/video/yashmine%20khan" to "Yashmine Khan" else null
-            ).toTypedArray()
-        )
+    override val mainPage = mainPageOf(
+        "${mainUrl}/home?range=month" to "Popular",
+        "${mainUrl}/now" to "Watching Now",
+        "${mainUrl}/home?range=explore" to "Explore",
+        "${mainUrl}/home?range=recent" to "Recent",
+        "${mainUrl}/video/mariza%20rabbit" to "Mariza Rabbit",
+        "${mainUrl}/video/Violet%20Myers" to "Violet Myers",
+        "${mainUrl}/video/victoria%20june" to "Victoria June",
+        "${mainUrl}/video/yashmine%20khan" to "Yashmine Khan"
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page == 1) {
