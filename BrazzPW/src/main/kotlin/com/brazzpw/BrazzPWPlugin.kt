@@ -7,6 +7,6 @@ import android.content.Context
 @CloudstreamPlugin
 class BrazzPWPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(BrazzPW())
+        registerMainAPI(Brazzpw())
     }
 }
