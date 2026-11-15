@@ -1,20 +1,24 @@
 package com.ukdevilz
 
+import android.content.Context
+import androidx.appcompat.app.AppCompatActivity
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
-import android.content.Context
-import androidx.preference.PreferenceManager
 
 @CloudstreamPlugin
 class UKDevilzPlugin : Plugin() {
     override fun load(context: Context) {
-        // Grab the Android preferences directly from the app context
-        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        // Register the scraper
+        registerMainAPI(UKDevilz())
         
-        // Pass the preferences directly into our scraper class
-        registerMainAPI(UKDevilz(prefs))
-        
-        // Attach the settings menu to the gear icon in the app
-        this.settings = UKDevilzSettings::class.java
+        // Attach the settings menu to the gear icon using Android's FragmentManager
+        this.openSettings = { ctx ->
+            val fragment = UKDevilzSettings()
+            val manager = (ctx as AppCompatActivity).supportFragmentManager
+            manager.beginTransaction()
+                .add(android.R.id.content, fragment)
+                .addToBackStack("settings")
+                .commit()
+        }
     }
 }
