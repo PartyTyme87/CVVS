@@ -9,5 +9,6 @@ ext {
 }
 
 dependencies {
-    implementation("androidx.preference:preference-ktx:1.2.1")
+    compileOnly("androidx.preference:preference-ktx:1.2.0")
+    compileOnly("androidx.appcompat:appcompat:1.6.1")
 }
