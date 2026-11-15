@@ -24,7 +24,11 @@ class Pornez : MainAPI() {
         "${mainUrl}/home?range=month" to "Popular",
         "${mainUrl}/now" to "Watching Now",
         "${mainUrl}/home?range=explore" to "Explore",
-        "${mainUrl}/home?range=recent" to "Recent"
+        "${mainUrl}/home?range=recent" to "Recent",
+        "${mainUrl}/?s=Sexmex" to "Sexmex",
+        "${mainUrl}/?s=Rkprime" to "RK Prime",
+        "${mainUrl}/?s=Milf" to "Milf",
+        "${mainUrl}/?s=Violet+Myers" to "Violet Myers"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
