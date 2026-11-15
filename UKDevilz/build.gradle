@@ -1,5 +1,5 @@
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+// The kotlin-android plugin line has been removed
 
 cloudstream {
     name = "UKDevilz"
