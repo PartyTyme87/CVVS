@@ -3,10 +3,8 @@ package com.ukdevilz
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import android.content.SharedPreferences
 
-// We now accept the preferences passed from the Plugin
-class UKDevilz(private val prefs: SharedPreferences) : MainAPI() {
+class UKDevilz : MainAPI() {
     override var mainUrl              = "https://ukdevilz.com"
     override var name                 = "UKDevilz"
     override val hasMainPage          = true
@@ -22,11 +20,11 @@ class UKDevilz(private val prefs: SharedPreferences) : MainAPI() {
         "Accept-Language" to "en-US,en;q=0.5"
     )
 
-    // Read directly from the passed SharedPreferences instance
-    private val showMariza get() = prefs.getBoolean("ukd_mariza_rabbit", true)
-    private val showViolet get() = prefs.getBoolean("ukd_violet_myers", true)
-    private val showVictoria get() = prefs.getBoolean("ukd_victoria_june", true)
-    private val showYashmine get() = prefs.getBoolean("ukd_yashmine_khan", true)
+    // Pulls the user's toggle choices natively from Cloudstream
+    private val showMariza get() = app.preferences.getBoolean("ukd_mariza_rabbit", true)
+    private val showViolet get() = app.preferences.getBoolean("ukd_violet_myers", true)
+    private val showVictoria get() = app.preferences.getBoolean("ukd_victoria_june", true)
+    private val showYashmine get() = app.preferences.getBoolean("ukd_yashmine_khan", true)
 
     // Dynamically builds the homepage tables based on active preferences
     override val mainPage: List<MainPageData>
