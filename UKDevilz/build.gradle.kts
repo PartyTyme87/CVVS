@@ -1,10 +1,18 @@
-apply(plugin = "com.android.library")
-apply(plugin = "kotlin-android")
+version = 16
 
 cloudstream {
-    // You can customize the name and description for the app menu here
-    name = "UKDevilz"
-    description = "UKDevilz provider"
-    authors = listOf("PartyTyme87")
-    types = listOf("NSFW")
+    authors     = listOf("PartyTyme87")
+    language    = "en"
+    description = "UKDevilz"
+
+    /**
+     * Status int as the following:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+    **/
+    status  = 1 // will be 3 if unspecified
+    tvTypes = listOf("NSFW")
+    iconUrl = "https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://ixiporn.org&size=16"
 }
