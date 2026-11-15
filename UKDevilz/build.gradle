@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+cloudstream {
+    name = "UKDevilz"
+    description = "UKDevilz provider"
+    authors = ["PartyTyme87"]
+    types = ["NSFW"]
+}
+
+dependencies {
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+}
