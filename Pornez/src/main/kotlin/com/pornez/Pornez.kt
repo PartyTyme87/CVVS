@@ -35,18 +35,14 @@ class Pornez : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // PVVStream pagination query handling
-            if (request.data.contains("?")) {
-                "${request.data}&p=$page"
-            } else {
-                "${request.data}?p=$page"
-            }
+            // WordPress style pagination
+            if (request.data.endsWith("/")) "${request.data}page/$page/" else "${request.data}/page/$page/"
         }
         
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
         
-        // Widened the selector to catch various PVVStream theme wrappers
-        val home = document.select("div.item, div.video, div.post, article.post, div.video-block").mapNotNull { it.toSearchResult() }
+        // Target the WordPress article blocks
+        val home = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
             list    = HomePageList(
@@ -59,46 +55,36 @@ class Pornez : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        // Broadened link finding logic
-        val linkElement = this.selectFirst("a.item_link, a[href*='/watch/'], a[href*='/video/']") ?: return null
+        val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Stronger title extraction fallback chain
-        val title = this.attr("data-video-title-base").takeIf { it.isNotBlank() } 
-            ?: this.selectFirst("div.title, div.video-title, h3, h2, span.title")?.text()?.trim() 
-            ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
-            ?: linkElement.attr("title").takeIf { it.isNotBlank() }
+        // Extract title from data-title attribute or fallback to entry-header text
+        val title = linkElement.attr("data-title").takeIf { it.isNotBlank() }
+            ?: this.selectFirst("header.entry-header span")?.text()?.trim() 
             ?: return null
             
-        val img = this.selectFirst("img")
+        // Extract poster from data-main-thumb attribute or the img tag
         val posterUrl = fixUrlNull(
-            img?.attr("data-src")?.takeIf { it.isNotBlank() } 
-            ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+            this.attr("data-main-thumb").takeIf { it.isNotBlank() }
+            ?: this.selectFirst("img")?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
         )
 
-        val isFolder = href.contains("/category/") || href.contains("/tag/") || href.contains("/pornstar/") || href.contains("/studio/")
-        
-        return if (isFolder) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = posterUrl
-            }
-        } else {
-            newMovieSearchResponse(title, href, TvType.NSFW) {
-                this.posterUrl = posterUrl
-            }
+        return newMovieSearchResponse(title, href, TvType.NSFW) {
+            this.posterUrl = posterUrl
         }
     }
-    
+
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         val safeQuery = query.replace(" ", "+")
 
         for (i in 1..3) {
-            val url = "${mainUrl}/search/?story=$safeQuery&p=$i"
+            // WordPress search pagination
+            val url = if (i == 1) "$mainUrl/?s=$safeQuery" else "$mainUrl/page/$i/?s=$safeQuery"
             
             try {
                 val document = app.get(url, headers = defaultHeaders, timeout = 30).document
-                val results = document.select("div.item").mapNotNull { it.toSearchResult() }
+                val results = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
                 if (results.isEmpty()) break
                 searchResponse.addAll(results.filter { res -> searchResponse.none { it.url == res.url } })
@@ -112,65 +98,16 @@ class Pornez : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
 
-        val title = document.selectFirst("div.h_info h1 span")?.text()?.trim() 
+        // Get title from the main heading
+        val title = document.selectFirst("h1.entry-title")?.text()?.trim() 
             ?: document.selectFirst("meta[property='og:title']")?.attr("content")?.trim() 
             ?: "Video"
             
-        val poster = fixUrlNull(
-            document.selectFirst("div.jw-preview")?.attr("style")?.let { style ->
-                Regex("""url\(['"]?(.*?)['"]?\)""").find(style)?.groupValues?.get(1)
-            } ?: document.selectFirst("meta[property='og:image']")?.attr("content")
-        )
+        val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         
-        if (url.contains("/category/") || url.contains("/tag/") || url.contains("/pornstar/") || url.contains("/studio/")) {
-            val episodes = mutableListOf<Episode>()
-            
-            for (page in 1..50) {
-                val pageUrl = if (page == 1) url else {
-                    if (url.contains("?")) "$url&p=$page" else "$url?p=$page"
-                }
-
-                try {
-                    val pageDoc = if (page == 1) document else app.get(pageUrl, headers = defaultHeaders, timeout = 30).document
-                    val pageEpisodes = pageDoc.select("div.item").mapNotNull { elem ->
-                        val link = elem.selectFirst("a.item_link") ?: return@mapNotNull null
-                        val epHref = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
-                        val img = elem.selectFirst("img")
-                        
-                        val epTitle = elem.attr("data-video-title-base").takeIf { it.isNotBlank() }
-                            ?: elem.selectFirst("div.title")?.text()?.trim()
-                            ?: "Video"
-                            
-                        val epPoster = fixUrlNull(
-                            img?.attr("data-src")?.takeIf { it.isNotBlank() }
-                            ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
-                        )
-                        
-                        newEpisode(epHref) {
-                            this.name = epTitle
-                            this.posterUrl = epPoster
-                        }
-                    }
-
-                    if (pageEpisodes.isEmpty()) break
-                    
-                    val existingUrls = episodes.map { it.data }
-                    val newEpisodes = pageEpisodes.filter { it.data !in existingUrls }
-                    if (newEpisodes.isEmpty()) break
-
-                    episodes.addAll(newEpisodes)
-                } catch (e: Exception) {
-                    break
-                }
-            }
-            
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = poster
-            }
-        }
-        
-        val tags = document.select("div.video-tags-bar a.vtag span").map { it.text().trim() }
-        val recommendations = document.select("div.list_videos div.item").mapNotNull { it.toSearchResult() }
+        // Find tags based on standard WP category/tag links
+        val tags = document.select("a[rel='tag']").map { it.text().trim() }
+        val recommendations = document.select("article.loop-video").mapNotNull { it.toSearchResult() }
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
             this.posterUrl = poster
@@ -182,44 +119,19 @@ class Pornez : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val html = app.get(data, headers = defaultHeaders, timeout = 30).text
+        val document = org.jsoup.Jsoup.parse(html)
         var foundLinks = false
         
-        // Target the embedded JWPlayer JSON block
-        val playlistRegex = Regex("""window\.playlist\s*=\s*(\{.*?\});""")
-        val match = playlistRegex.find(html)
-        
-        if (match != null) {
-            try {
-                val jsonString = match.groupValues[1]
-                val sourcesRegex = Regex(""""file"\s*:\s*"([^"]+)".*?"label"\s*:\s*"([^"]+)"""")
-                
-                sourcesRegex.findAll(jsonString).forEach { srcMatch ->
-                    val videoUrl = srcMatch.groupValues[1].replace("\\/", "/")
-                    val qualityLabel = srcMatch.groupValues[2]
-                    
-                    if (videoUrl.isNotBlank()) {
-                        callback.invoke(
-                            newExtractorLink(
-                                source = name,
-                                name = "$name $qualityLabel",
-                                url = fixUrl(videoUrl),
-                                type = INFER_TYPE
-                            ) {
-                                this.referer = data
-                                this.quality = qualityLabel.replace(Regex("[^0-9]"), "").toIntOrNull() ?: Qualities.Unknown.value
-                            }
-                        )
-                        foundLinks = true
-                    }
-                }
-            } catch (e: Exception) {
-                // Failsafe
+        // 1. Check for standard external embed iframes (Streamtape, Dood, etc)
+        document.select("iframe").mapNotNull { it.attr("src") }.forEach { src ->
+            if (src.isNotBlank()) {
+                val extracted = loadExtractor(fixUrl(src), data, subtitleCallback, callback)
+                if (extracted) foundLinks = true
             }
         }
         
-        // Fallback: Checks for standard <video> or <source> tags
+        // 2. Check for native HTML5 video tags
         if (!foundLinks) {
-            val document = org.jsoup.Jsoup.parse(html)
             document.select("video source").mapNotNull { it.attr("src") }.forEach { src ->
                 if (src.isNotBlank()) {
                     callback.invoke(
@@ -234,6 +146,22 @@ class Pornez : MainAPI() {
                         }
                     )
                     foundLinks = true
+                }
+            }
+        }
+
+        // 3. Fallback: Many WP adult themes store the raw embed URL in a specific data attribute
+        if (!foundLinks) {
+            val embedDiv = document.selectFirst("div[data-embed]")
+            val embedCode = embedDiv?.attr("data-embed")
+            if (!embedCode.isNullOrBlank()) {
+                // If it contains an iframe code, extract the src
+                val srcMatch = Regex("""src=["']([^"']+)["']""").find(embedCode)
+                val embedUrl = srcMatch?.groupValues?.get(1)
+                
+                if (embedUrl != null) {
+                     val extracted = loadExtractor(fixUrl(embedUrl), data, subtitleCallback, callback)
+                     if (extracted) foundLinks = true
                 }
             }
         }
