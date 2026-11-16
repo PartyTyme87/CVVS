@@ -171,61 +171,93 @@ class Freshporno : MainAPI() {
 
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         val html = app.get(data, headers = defaultHeaders, timeout = 30).text
-        val document = org.jsoup.Jsoup.parse(html)
         var foundLinks = false
         
-        // 1. Iframe extraction (often used by third-party tube sites)
-        document.select("iframe").mapNotNull { it.attr("src") }.forEach { src ->
-            if (src.isNotBlank() && src.startsWith("http")) {
-                val extracted = loadExtractor(fixUrl(src), data, subtitleCallback, callback)
-                if (extracted) foundLinks = true
-            }
-        }
+        // This regex targets the KVS flashvars block you provided in the HTML snippet
+        val flashvarsRegex = Regex("""var flashvars\s*=\s*(\{.*?\});""", RegexOption.DOT_MATCHES_ALL)
+        val match = flashvarsRegex.find(html)
         
-        // 2. HTML5 Video tags extraction
-        if (!foundLinks) {
-            document.select("video source").mapNotNull { it.attr("src") }.forEach { src ->
-                if (src.isNotBlank()) {
+        if (match != null) {
+            try {
+                val jsonBlock = match.groupValues[1]
+                
+                // Extract video_url (usually 480p)
+                val videoUrlMatch = Regex("""video_url\s*:\s*'(.*?)'""").find(jsonBlock)
+                val videoUrl = videoUrlMatch?.groupValues?.get(1)?.replace("function/0/", "")
+                val videoText = Regex("""video_url_text\s*:\s*'(.*?)'""").find(jsonBlock)?.groupValues?.get(1) ?: "480p"
+                
+                if (!videoUrl.isNullOrBlank()) {
                     callback.invoke(
                         newExtractorLink(
                             source = name,
-                            name = "$name Direct",
-                            url = fixUrl(src),
+                            name = "$name $videoText",
+                            url = fixUrl(videoUrl),
                             type = INFER_TYPE
                         ) {
                             this.referer = data
-                            this.quality = Qualities.Unknown.value
+                            // Parse quality from the text (e.g. '480p' -> 480)
+                            this.quality = videoText.replace(Regex("[^0-9]"), "").toIntOrNull() ?: Qualities.Unknown.value
                         }
                     )
                     foundLinks = true
                 }
+                
+                // Extract video_alt_url (usually 720p or HD)
+                val altUrlMatch = Regex("""video_alt_url\s*:\s*'(.*?)'""").find(jsonBlock)
+                val altUrl = altUrlMatch?.groupValues?.get(1)?.replace("function/0/", "")
+                val altText = Regex("""video_alt_url_text\s*:\s*'(.*?)'""").find(jsonBlock)?.groupValues?.get(1) ?: "720p"
+                
+                if (!altUrl.isNullOrBlank()) {
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name $altText",
+                            url = fixUrl(altUrl),
+                            type = INFER_TYPE
+                        ) {
+                            this.referer = data
+                            this.quality = altText.replace(Regex("[^0-9]"), "").toIntOrNull() ?: Qualities.Unknown.value
+                        }
+                    )
+                    foundLinks = true
+                }
+                
+            } catch (e: Exception) {
+                // Ignore parsing errors and fall back to the document parsers
             }
         }
-
-        // 3. JSON / Javascript configuration block extraction
+        
+        // Fallback 1: Iframe embed (if a video uses a third-party host)
         if (!foundLinks) {
-             val videoUrlMatch = Regex(""""url"\s*:\s*"([^"]+\.mp4[^"]*)"""").find(html) 
-                 ?: Regex("""file\s*:\s*["']([^"']+\.mp4[^"']*)["']""").find(html)
-                 ?: Regex("""src\s*:\s*["']([^"']+\.mp4[^"']*)["']""").find(html)
-
-             val videoUrl = videoUrlMatch?.groupValues?.get(1)?.replace("\\/", "/")
-             
-             if (!videoUrl.isNullOrBlank()) {
-                 callback.invoke(
-                     newExtractorLink(
-                         source = name,
-                         name = "$name Direct",
-                         url = fixUrl(videoUrl),
-                         type = INFER_TYPE
-                     ) {
-                         this.referer = data
-                         this.quality = Qualities.Unknown.value
-                     }
-                 )
-                 foundLinks = true
-             }
+            val document = org.jsoup.Jsoup.parse(html)
+            document.select("iframe").mapNotNull { it.attr("src") }.forEach { src ->
+                if (src.isNotBlank() && src.startsWith("http")) {
+                    val extracted = loadExtractor(fixUrl(src), data, subtitleCallback, callback)
+                    if (extracted) foundLinks = true
+                }
+            }
+            
+            // Fallback 2: Standard HTML5 video tag
+            if (!foundLinks) {
+                document.select("video source, video.fp-engine").mapNotNull { it.attr("src") }.forEach { src ->
+                    val cleanSrc = src.replace("function/0/", "")
+                    if (cleanSrc.isNotBlank()) {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name Direct",
+                                url = fixUrl(cleanSrc),
+                                type = INFER_TYPE
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                        foundLinks = true
+                    }
+                }
+            }
         }
 
         return foundLinks
     }
-}
