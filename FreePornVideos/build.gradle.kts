@@ -3,7 +3,7 @@ version = 16
 cloudstream {
     authors     = listOf("PartyTyme87")
     language    = "en"
-    description = "Free Porn Videos in 4K HD ⭐️ Full Length!"
+    description = "Free Porn Videos in 4K HD Full Length!"
 
     /**
      * Status int as the following:
