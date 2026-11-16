@@ -1,4 +1,4 @@
-package com.coxju
+package com.freepornvideos
 
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
