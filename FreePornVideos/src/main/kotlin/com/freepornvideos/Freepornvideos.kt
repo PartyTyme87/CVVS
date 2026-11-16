@@ -23,7 +23,19 @@ class Freepornvideos : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/videos/" to "Latest",
         "$mainUrl/videos/top-rated/" to "Top Rated",
-        "$mainUrl/videos/popular/" to "Popular"
+        "$mainUrl/most-popular/week/" to "Popular",
+        "$mainUrl/models/violet-myers/" to "Violet Myers",
+        "$mainUrl/models/rae-lil-black/" to "Rae Lil Black",
+        "$mainUrl/models/alexis-fawx/" to "Alexis Fawx",
+        "$mainUrl/models/willow-ryder/" to "Willow Ryder",
+        "$mainUrl/models/sofia-lee/" to "Sofia Lee",
+        "$mainUrl/models/little-puck/" to "Little Puck",
+        "$mainUrl/models/ashlyn-peaks/" to "Ashlyn Peaks",
+        "$mainUrl/models/kira-perez/" to "Kira Perez",
+        "$mainUrl/categories/big-tits/" to "Big Tits",
+        "$mainUrl/sites/my-pervy-family/" to "My Pervy Family",
+        "$mainUrl/sites/milfy/" to "Milfy",
+        "$mainUrl/sites/my-friends-hot-mom/" to "My Friend's Hot Mom",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
