@@ -30,13 +30,10 @@ class Freshporno : MainAPI() {
         val url = if (page == 1) {
             request.data
         } else {
-            // Append standard tube site page numbers
             if (request.data.endsWith("/")) "${request.data}$page/" else "${request.data}/$page/"
         }
         
         val document = app.get(url, headers = defaultHeaders, timeout = 30).document
-        
-        // Target the item container from your HTML snippet
         val home = document.select("div.item").mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(
@@ -53,12 +50,10 @@ class Freshporno : MainAPI() {
         val linkElement = this.selectFirst("a") ?: return null
         val href = fixUrlNull(linkElement.attr("href")) ?: return null
         
-        // Grab title from the <a> title attribute or fallback to <img> alt
         val title = linkElement.attr("title").takeIf { it.isNotBlank() } 
             ?: this.selectFirst("img")?.attr("alt")?.takeIf { it.isNotBlank() }
             ?: return null
             
-        // Use data-original or data-webp since the site uses lazy-loading
         val img = this.selectFirst("img")
         val posterUrl = fixUrlNull(
             img?.attr("data-original")?.takeIf { it.isNotBlank() }
@@ -81,7 +76,6 @@ class Freshporno : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
-        // Most tube sites use dashes or pluses for search queries
         val safeQuery = query.replace(" ", "-") 
 
         for (i in 1..3) {
@@ -109,7 +103,6 @@ class Freshporno : MainAPI() {
             
         val poster = fixUrlNull(document.selectFirst("meta[property='og:image']")?.attr("content"))
         
-        // If it's a category/model page, scrape a few pages of videos
         if (url.contains("/category/") || url.contains("/models/") || url.contains("/channels/")) {
             val episodes = mutableListOf<Episode>()
             
@@ -173,7 +166,6 @@ class Freshporno : MainAPI() {
         val html = app.get(data, headers = defaultHeaders, timeout = 30).text
         var foundLinks = false
         
-        // This regex targets the KVS flashvars block you provided in the HTML snippet
         val flashvarsRegex = Regex("""var flashvars\s*=\s*(\{.*?\});""", RegexOption.DOT_MATCHES_ALL)
         val match = flashvarsRegex.find(html)
         
@@ -195,7 +187,6 @@ class Freshporno : MainAPI() {
                             type = INFER_TYPE
                         ) {
                             this.referer = data
-                            // Parse quality from the text (e.g. '480p' -> 480)
                             this.quality = videoText.replace(Regex("[^0-9]"), "").toIntOrNull() ?: Qualities.Unknown.value
                         }
                     )
@@ -227,7 +218,6 @@ class Freshporno : MainAPI() {
             }
         }
         
-        // Fallback 1: Iframe embed (if a video uses a third-party host)
         if (!foundLinks) {
             val document = org.jsoup.Jsoup.parse(html)
             document.select("iframe").mapNotNull { it.attr("src") }.forEach { src ->
@@ -237,7 +227,6 @@ class Freshporno : MainAPI() {
                 }
             }
             
-            // Fallback 2: Standard HTML5 video tag
             if (!foundLinks) {
                 document.select("video source, video.fp-engine").mapNotNull { it.attr("src") }.forEach { src ->
                     val cleanSrc = src.replace("function/0/", "")
@@ -261,3 +250,4 @@ class Freshporno : MainAPI() {
 
         return foundLinks
     }
+}
